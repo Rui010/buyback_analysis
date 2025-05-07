@@ -1,0 +1,41 @@
+# 仮想環境
+venv/
+.venv/
+
+# 環境変数ファイル
+.env
+
+# Pythonキャッシュファイル
+__pycache__/
+*.py[cod]
+*$py.class
+
+# スクレイピングや生成されたデータ
+data/
+data/
+*.csv
+*.json
+*.xls
+
+# データベースファイル
+*.sqlite3
+*.db
+
+# ログディレクトリ
+logs/
+
+# ログファイル（もしあれば）
+*.log
+
+# OS固有のファイル
+.DS_Store
+Thumbs.db
+
+# IDE/エディタの設定ファイル（例: VSCode）
+.vscode/
+
+# その他ビルドや配布関連
+build/
+dist/
+*.egg-info/
+
