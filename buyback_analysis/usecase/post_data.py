@@ -4,8 +4,11 @@ from sqlalchemy.orm import Session
 from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.progress import Progress
+from buyback_analysis.usecase.logger import Logger
 
 VALID_TYPES = {"announcement", "completion", "progress"}
+
+logger = Logger()
 
 
 def post_data(session: Session, data: dict) -> None:
@@ -36,12 +39,12 @@ def post_data(session: Session, data: dict) -> None:
             session.add(progress)
 
         session.commit()
-        print("データが正常に保存されました")
+        logger.info("データが正常に保存されました")
     except IntegrityError as e:
         # 主キーエラーの場合はスキップして続行
         session.rollback()
-        print(f"主キーエラーによりスキップしました: {e}")
+        logger.info(f"主キーエラーによりスキップしました: {e}")
     except Exception as e:
         session.rollback()
-        print(data)
-        raise RuntimeError(f"データの保存に失敗しました: {e}")
+        logger.error(f"データの保存に失敗しました: {e}")
+        logger.log_failed_data(data, str(e))

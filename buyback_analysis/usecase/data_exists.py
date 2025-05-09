@@ -2,6 +2,10 @@ from sqlalchemy.orm import Session
 from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.progress import Progress
 from buyback_analysis.models.completion import Completion
+from buyback_analysis.usecase.logger import Logger
+
+
+logger = Logger()
 
 
 def data_exists(session: Session, url: str) -> bool:
@@ -26,5 +30,6 @@ def data_exists(session: Session, url: str) -> bool:
         if session.query(Completion).filter(Completion.url == url).first():
             return True
         return False
-    finally:
-        session.close()
+    except Exception as e:
+        logger.error(f"データの存在確認に失敗しました: {e}")
+        return False

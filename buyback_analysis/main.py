@@ -51,7 +51,7 @@ def main():
             print(f"タイプの判定に失敗しました: {row['link']}")
             continue
 
-        obj["url"] = row["link"]
+        obj["data"]["url"] = row["link"]
         post_data(session, obj)
         logger.info(f"データを保存しました: {row['code']} - {row['date']}")
 
