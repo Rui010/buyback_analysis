@@ -1,5 +1,5 @@
 from buyback_analysis.interface.postgresql_engine import get_database_engine
-from buyback_analysis.interface.sqlite_engine import init_db
+from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
 from buyback_analysis.usecase.data_exists import data_exists
 from buyback_analysis.usecase.logger import Logger
 from buyback_analysis.usecase.post_data import post_data
@@ -9,6 +9,7 @@ from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
 from buyback_analysis.usecase.detect_type import detect_type_by_llm
 
 logger = Logger()
+session = SessionLocal()
 
 
 def main():
@@ -21,7 +22,7 @@ def main():
     )
     for index, row in df.iterrows():
 
-        if data_exists(row["link"]):
+        if data_exists(session, row["link"]):
             logger.info(f"データが既に存在します: {row['code']} - {row['date']}")
             continue
 
@@ -51,7 +52,11 @@ def main():
             continue
 
         obj["url"] = row["link"]
-        post_data(obj)
+        post_data(session, obj)
+        logger.info(f"データを保存しました: {row['code']} - {row['date']}")
+
+    session.close()
+    logger.info("全てのデータを処理しました")
 
 
 if __name__ == "__main__":

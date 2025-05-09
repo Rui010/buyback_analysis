@@ -1,14 +1,14 @@
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.progress import Progress
-from buyback_analysis.interface.sqlite_engine import SessionLocal
 
 VALID_TYPES = {"announcement", "completion", "progress"}
 
 
-def post_data(data: dict) -> None:
+def post_data(session: Session, data: dict) -> None:
     """
     データをSQLiteデータベースに保存する関数
 
@@ -19,7 +19,6 @@ def post_data(data: dict) -> None:
         ValueError: 必要な環境変数が設定されていない場合
         RuntimeError: データの保存に失敗した場合
     """
-    session = SessionLocal()
     try:
         if data is None:
             raise ValueError("データがNoneです")
@@ -46,5 +45,3 @@ def post_data(data: dict) -> None:
         session.rollback()
         print(data)
         raise RuntimeError(f"データの保存に失敗しました: {e}")
-    finally:
-        session.close()
