@@ -16,7 +16,7 @@ class Logger:
         """
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, log_file)
-        failed_data_path = os.path.join(log_dir, failed_data_file)
+        self.failed_data_path = os.path.join(log_dir, failed_data_file)
 
         logging.basicConfig(
             level=logging.INFO,

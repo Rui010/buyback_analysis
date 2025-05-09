@@ -46,5 +46,4 @@ def post_data(session: Session, data: dict) -> None:
         logger.info(f"主キーエラーによりスキップしました: {e}")
     except Exception as e:
         session.rollback()
-        logger.error(f"データの保存に失敗しました: {e}")
         logger.log_failed_data(data, str(e))

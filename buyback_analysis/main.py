@@ -17,8 +17,8 @@ def main():
     postgresql_engine = get_database_engine()
     df = get_tdnet_buyback_data(
         engine=postgresql_engine,
-        start_date="2025-05-01",
-        end_date="2025-05-07",
+        start_date="2025-04-01",
+        end_date="2025-04-30",
     )
     for index, row in df.iterrows():
 
