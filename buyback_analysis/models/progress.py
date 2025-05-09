@@ -7,6 +7,7 @@ class Progress(Base):
 
     code = Column(String, primary_key=True)
     disclosure_date = Column(String, primary_key=True)
+    url = Column(String)
     company_name = Column(String)
     cumulative_shares_acquired = Column(BigInteger)
     cumulative_amount_spent_yen = Column(BigInteger)

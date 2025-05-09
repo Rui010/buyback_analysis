@@ -1,6 +1,10 @@
 from sqlalchemy import create_engine
 import pandas as pd
 
+from buyback_analysis.usecase.logger import Logger
+
+logging = Logger()
+
 
 def get_tdnet_buyback_data(
     engine: create_engine,
@@ -41,5 +45,5 @@ def get_tdnet_buyback_data(
         filtered_df = df[df["title"].str.contains("自己株", na=False)]
         return filtered_df
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        logging.error(f"Error fetching data: {e}")
         return pd.DataFrame()

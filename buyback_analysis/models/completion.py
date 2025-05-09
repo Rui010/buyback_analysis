@@ -7,10 +7,10 @@ class Completion(Base):
 
     code = Column(String, primary_key=True)
     disclosure_date = Column(String, primary_key=True)
+    url = Column(String)
     company_name = Column(String)
     tender_offer_start = Column(String)
     tender_offer_end = Column(String)
     tender_offer_price = Column(Float)
     tender_offer_shares_acquired = Column(BigInteger)
-    remaining_budget_after_tender_offer_yen = Column(BigInteger)
-    planned_follow_up_method = Column(String)
+    tender_offer_amount_spent_yen_acquired = Column(BigInteger)
