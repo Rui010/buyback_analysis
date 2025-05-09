@@ -45,10 +45,15 @@ def get_pdf_data(url: str, pud_date_str: str, save_dir="data") -> bytes:
         print(f"PDFファイルを保存しました: {save_path}")
 
     # PDFファイルの読み込み、テキストデータの抽出
-    with open(save_path, "rb") as pdf_file:
-        reader = PdfReader(pdf_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text()
-
-    return text
+    try:
+        with open(save_path, "rb") as pdf_file:
+            reader = PdfReader(pdf_file)
+            if reader.is_encrypted:
+                reader.decrypt("")
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text()
+        return text
+    except Exception as e:
+        print(f"PDFファイルの読み込みに失敗しました: {e}")
+        return None

@@ -33,7 +33,6 @@ def get_tdnet_buyback_data(
     """
     try:
         with engine.connect() as connection:
-            print(query)
             df = pd.read_sql_query(
                 query,
                 connection,
