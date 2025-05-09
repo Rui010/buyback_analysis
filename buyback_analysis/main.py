@@ -21,7 +21,7 @@ def main():
     )
     for index, row in df.iterrows():
 
-        if data_exists(row["url"]):
+        if data_exists(row["link"]):
             logger.info(f"データが既に存在します: {row['code']} - {row['date']}")
             continue
 
