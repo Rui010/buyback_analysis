@@ -5,6 +5,7 @@ from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.progress import Progress
 from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.consts.detect_type import DetectType
 
 VALID_TYPES = {"announcement", "completion", "progress"}
 
@@ -22,21 +23,20 @@ def post_data(session: Session, data: dict) -> None:
         ValueError: 必要な環境変数が設定されていない場合
         RuntimeError: データの保存に失敗した場合
     """
+    model_map = {
+        DetectType.BUYBACK_ANNOUNCEMENT: Announcement,
+        DetectType.BUYBACK_PROGRESS: Progress,
+        DetectType.BUYBACK_COMPLETION: Completion,
+    }
     try:
         if data is None:
             raise ValueError("データがNoneです")
         if data["type"] not in VALID_TYPES:
             raise ValueError(f"不明なデータタイプです: {data['type']}")
-
-        if data["type"] == "announcement":
-            announcement = Announcement(**data["data"])
-            session.add(announcement)
-        elif data["type"] == "completion":
-            completion = Completion(**data["data"])
-            session.add(completion)
-        elif data["type"] == "progress":
-            progress = Progress(**data["data"])
-            session.add(progress)
+        detect_type = DetectType(data["type"])
+        ModelClass = model_map[detect_type]
+        instance = ModelClass(**data["data"])
+        session.add(instance)
 
         session.commit()
         logger.info("データが正常に保存されました")

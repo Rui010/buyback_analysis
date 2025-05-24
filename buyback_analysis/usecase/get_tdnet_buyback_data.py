@@ -33,7 +33,7 @@ def get_tdnet_buyback_data(
     WHERE 
         "public"."tdnet"."date" <= '{end_date}'
         AND "public"."tdnet"."date" >= '{start_date}'
-    ORDER BY "public"."tdnet"."date" DESC
+    ORDER BY "public"."tdnet"."date" ASC
     """
     try:
         with engine.connect() as connection:

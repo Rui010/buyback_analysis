@@ -52,7 +52,7 @@ def parse_text_by_llm(
         except APIError as e:  # API制限エラー
             if e.code in {502, 503, 504}:
                 logger.info(
-                    f"サーバーエラー {e.status_code}が発生しました。リトライ {attempt}/{max_retries}"
+                    f"サーバーエラー {e.code}が発生しました。リトライ {attempt}/{max_retries}"
                 )
                 if attempt < max_retries:
                     time.sleep(retry_delay)

@@ -7,6 +7,7 @@ from buyback_analysis.usecase.get_tdnet_buyback_data import get_tdnet_buyback_da
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
 from buyback_analysis.usecase.detect_type import detect_type_by_llm
+from buyback_analysis.consts.detect_type import DetectType
 
 logger = Logger()
 session = SessionLocal()
@@ -17,8 +18,8 @@ def main():
     postgresql_engine = get_database_engine()
     df = get_tdnet_buyback_data(
         engine=postgresql_engine,
-        start_date="2025-04-01",
-        end_date="2025-04-30",
+        start_date="2025-05-23",
+        end_date="2025-05-23",
     )
     for index, row in df.iterrows():
 
@@ -33,27 +34,34 @@ def main():
         if content is None:
             logger.error(f"PDFの取得に失敗しました: {row['link']}")
             continue
-        detect_type = detect_type_by_llm(row["title"], content)
 
-        if detect_type == "announcement":
-            obj = parse_text_by_llm(
-                row["title"], content, row["code"], row["name"], "announcement.md"
-            )
-        elif detect_type == "progress":
-            obj = parse_text_by_llm(
-                row["title"], content, row["code"], row["name"], "progress.md"
-            )
-        elif detect_type == "completion":
-            obj = parse_text_by_llm(
-                row["title"], content, row["code"], row["name"], "completion.md"
-            )
-        else:
+        detect_type_str = detect_type_by_llm(row["title"], content)
+        try:
+            detect_type_enum = DetectType(detect_type_str)
+        except ValueError:
             print(f"タイプの判定に失敗しました: {row['link']}")
             continue
+        logger.info(f"{row["code"]} - {row["title"]} - {detect_type_enum.value}")
+        continue
+        template_map = {
+            DetectType.BUYBACK_ANNOUNCEMENT: "announcement.md",
+            DetectType.BUYBACK_PROGRESS: "progress.md",
+            DetectType.BUYBACK_COMPLETION: "completion.md",
+        }
 
+        obj = parse_text_by_llm(
+            row["title"],
+            content,
+            row["code"],
+            row["name"],
+            template_map[detect_type_enum],
+        )
+        if obj is None:
+            logger.error(f"LLMによるパースに失敗しました: {row['link']}")
+            continue
         obj["data"]["url"] = row["link"]
-        post_data(session, obj)
-        logger.info(f"データを保存しました: {row['code']} - {row['date']}")
+        # post_data(session, obj)
+        # logger.info(f"データを保存しました: {row['code']} - {row['date']}")
 
     session.close()
     logger.info("全てのデータを処理しました")

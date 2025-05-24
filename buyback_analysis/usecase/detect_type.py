@@ -6,6 +6,7 @@ from google.genai.errors import APIError
 
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
 from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.consts.detect_type import DetectType
 
 logger = Logger()
 
@@ -40,19 +41,22 @@ def detect_type_by_llm(title: str, content: str) -> str:
                 model="gemini-2.0-flash-lite",
                 contents=prompt,
             )
-            ir_type = response.text.strip()
+            ir_type_str = response.text.strip()
 
             # 判定結果がリストに含まれているか確認
-            if ir_type in ir_types_list:
-                return ir_type
-            else:
-                logger.error(f"判定結果が不正です: {ir_type}")
+            try:
+                ir_type_enum = DetectType(
+                    ir_type_str
+                )  # Enum変換（ここで不正値は弾かれる）
+                return ir_type_enum.value  # または ir_type_enum（用途による）
+            except ValueError:
+                logger.error(f"判定結果が不正です: {ir_type_str}")
                 return None
 
         except APIError as e:  # API制限エラー
             if e.code in {502, 503, 504}:
                 logger.info(
-                    f"サーバーエラー {e.status_code}が発生しました。リトライ {attempt}/{max_retries}"
+                    f"サーバーエラー {e.code}が発生しました。リトライ {attempt}/{max_retries}"
                 )
                 if attempt < max_retries:
                     time.sleep(retry_delay)
