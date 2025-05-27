@@ -28,7 +28,6 @@ def detect_type_by_llm(title: str, content: str) -> str:
         raise ValueError("GEMINI_API_KEYが設定されていません")
 
     prompt_filename = "ir_type.md"
-    ir_types_list = ["announcement", "progress", "completion"]
     prompt = load_prompt_template(prompt_filename, title=title, content=content)
 
     max_retries = 3
@@ -41,6 +40,7 @@ def detect_type_by_llm(title: str, content: str) -> str:
                 model="gemini-2.0-flash-lite",
                 contents=prompt,
             )
+            time.sleep(1)  # レート制限対策のためのスリープ
             ir_type_str = response.text.strip()
 
             # 判定結果がリストに含まれているか確認

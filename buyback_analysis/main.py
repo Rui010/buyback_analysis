@@ -8,6 +8,7 @@ from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
 from buyback_analysis.usecase.detect_type import detect_type_by_llm
 from buyback_analysis.consts.detect_type import DetectType
+from buyback_analysis.usecase.post_url import post_url
 
 logger = Logger()
 session = SessionLocal()
@@ -18,8 +19,8 @@ def main():
     postgresql_engine = get_database_engine()
     df = get_tdnet_buyback_data(
         engine=postgresql_engine,
-        start_date="2025-05-23",
-        end_date="2025-05-23",
+        start_date="2025-04-01",
+        end_date="2025-05-08",
     )
     for index, row in df.iterrows():
 
@@ -41,8 +42,22 @@ def main():
         except ValueError:
             print(f"タイプの判定に失敗しました: {row['link']}")
             continue
+        post_url(
+            session,
+            row["code"],
+            row["link"],
+            detect_type_enum.value,
+        )
         logger.info(f"{row["code"]} - {row["title"]} - {detect_type_enum.value}")
-        continue
+
+        if detect_type_enum not in [
+            DetectType.BUYBACK_ANNOUNCEMENT,
+            DetectType.BUYBACK_PROGRESS,
+            DetectType.BUYBACK_COMPLETION,
+        ]:
+            logger.error(f"対象外: {row['title']}")
+            continue
+
         template_map = {
             DetectType.BUYBACK_ANNOUNCEMENT: "announcement.md",
             DetectType.BUYBACK_PROGRESS: "progress.md",
@@ -60,8 +75,8 @@ def main():
             logger.error(f"LLMによるパースに失敗しました: {row['link']}")
             continue
         obj["data"]["url"] = row["link"]
-        # post_data(session, obj)
-        # logger.info(f"データを保存しました: {row['code']} - {row['date']}")
+        post_data(session, obj)
+        logger.info(f"データを保存しました: {row['code']} - {row['date']}")
 
     session.close()
     logger.info("全てのデータを処理しました")

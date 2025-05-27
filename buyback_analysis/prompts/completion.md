@@ -11,9 +11,9 @@
 ### 出力形式（type + data オブジェクト）
 
 ```json
-{
-  "type": "completion",
-  "data": {
+{{
+  "type": "buyback_completion",
+  "data": {{
     "code": "企業の証券コード（例：3187）",
     "disclosure_date": "IRが発表された日付（例：2025-05-23）",
     "company_name": "企業名（例：株式会社ミラタップ）",
@@ -22,8 +22,8 @@
     "shares_acquired": "実際に取得した株式数（例：77900 → 数値で）",
     "amount_spent_yen": "取得に使った実際の金額（例：28281800 → 数値で）",
     "buyback_method": "買付方法（例：東京証券取引所における市場買付）"
-  }
-}
+  }}
+}}
 ```
 
 ### 注意点

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.progress import Progress
 from buyback_analysis.models.completion import Completion
+from buyback_analysis.models.is_checked import IsChecked
 from buyback_analysis.usecase.logger import Logger
 
 
@@ -20,6 +21,8 @@ def data_exists(session: Session, url: str) -> bool:
     """
 
     try:
+        if session.query(IsChecked).filter(IsChecked.url == url).first():
+            return True
         # Announcement テーブルで URL を検索
         if session.query(Announcement).filter(Announcement.url == url).first():
             return True

@@ -6,7 +6,7 @@
 
 ```json
 {{
-    "type": "announcement",
+    "type": "buyback_announcement",
     "data": {{
         "code": "企業の証券コード（例：4063）",
         "disclosure_date": "IRが発表された日付（例：2025-04-25）",

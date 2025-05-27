@@ -43,6 +43,7 @@ def parse_text_by_llm(
                 model="gemini-2.0-flash-lite",
                 contents=prompt,
             )
+            time.sleep(1)  # レート制限対策のためのスリープ
             # Markdownコードブロック（```json ～ ```）を除去
             cleaned_text = re.sub(
                 r"^```json\s*|\s*```$", "", response.text.strip(), flags=re.DOTALL

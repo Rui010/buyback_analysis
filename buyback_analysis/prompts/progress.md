@@ -6,7 +6,7 @@
 
 ```json
 {{
-    "type": "progress",
+    "type": "buyback_progress",
     "data": {{
         "code": "企業の証券コード（例：8058）",
         "disclosure_date": "IRが発表された日付（例：2025-06-01）",
