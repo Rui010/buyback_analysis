@@ -9,7 +9,7 @@ from buyback_analysis.usecase.logger import Logger
 logger = Logger()
 
 
-def data_exists(session: Session, url: str) -> bool:
+def data_exists_in_ir_tables(session: Session, url: str) -> bool:
     """
     Check if the data already exists in the database.
 
@@ -21,8 +21,6 @@ def data_exists(session: Session, url: str) -> bool:
     """
 
     try:
-        if session.query(IsChecked).filter(IsChecked.url == url).first():
-            return True
         # Announcement テーブルで URL を検索
         if session.query(Announcement).filter(Announcement.url == url).first():
             return True

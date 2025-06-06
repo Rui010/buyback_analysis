@@ -5,10 +5,32 @@ from google import genai
 from google.genai.errors import APIError
 
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
+from buyback_analysis.models.is_checked import IsChecked
 from buyback_analysis.usecase.logger import Logger
 from buyback_analysis.consts.detect_type import DetectType
 
 logger = Logger()
+
+
+def get_detect_type_in_db(session, link) -> str:
+    """
+    データベースから自己株式取得の種類を取得する。
+
+    Args:
+        session: SQLAlchemyのセッションオブジェクト
+        link (str): 対象のURL
+
+    Returns:
+        str: 判定結果（文字列）。存在しない場合は None。
+    """
+    try:
+        result = session.query(IsChecked).filter_by(url=link).first()
+        if result is None:
+            return None
+        return result.detected_type  # ←カラム名に合わせて修正
+    except Exception as e:
+        logger.error(f"データベースからの取得に失敗しました: {e}")
+        return None
 
 
 def detect_type_by_llm(title: str, content: str) -> str:
