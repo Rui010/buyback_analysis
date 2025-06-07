@@ -1,4 +1,5 @@
 import os
+import datetime
 from dotenv import load_dotenv
 from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
@@ -29,10 +30,13 @@ session = SessionLocal()
 def main():
     init_db()  # DBの初期化
     postgresql_engine = get_database_engine()
+    today = datetime.date.today()
+    start_date = (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    end_date = today.strftime("%Y-%m-%d")
     df = get_tdnet_buyback_data(
         engine=postgresql_engine,
-        start_date="2025-06-05",
-        end_date="2025-06-06",
+        start_date=start_date,
+        end_date=end_date,
     )
     for index, row in df.iterrows():
 
