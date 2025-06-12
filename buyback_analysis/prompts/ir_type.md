@@ -18,6 +18,8 @@
 
 - strategic_transaction：資本政策や特殊取引に関連する自己株式の処理を行った文書。第三者割当、新株予約権、FCSRなどの記載がある。
 
+- correction：過去発表した文書を訂正するための文書。タイトルに訂正が含まれ、記載内容の一部について誤りがあり、訂正前と訂正後の記載がある。
+
 - other：上記のどれにも当てはまらない、または内容が曖昧なもの。
 
 【出力指示】
@@ -29,6 +31,7 @@ buyback_progress
 buyback_completion
 equity_compensation
 strategic_transaction
+correction
 other
 
 【タイトル】  

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.progress import Progress
+from buyback_analysis.models.correction import Correction
 from buyback_analysis.usecase.logger import Logger
 from buyback_analysis.consts.detect_type import DetectType
 
@@ -25,6 +26,7 @@ def post_data(session: Session, data: dict) -> None:
         DetectType.BUYBACK_ANNOUNCEMENT: Announcement,
         DetectType.BUYBACK_PROGRESS: Progress,
         DetectType.BUYBACK_COMPLETION: Completion,
+        DetectType.CORRECTION: Correction,
     }
     try:
         if data is None:

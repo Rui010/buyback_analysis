@@ -80,6 +80,7 @@ def main():
             DetectType.BUYBACK_ANNOUNCEMENT,
             DetectType.BUYBACK_PROGRESS,
             DetectType.BUYBACK_COMPLETION,
+            DetectType.CORRECTION,
         ]:
             logger.error(f"対象外: {row['title']}")
             continue
@@ -88,6 +89,7 @@ def main():
             DetectType.BUYBACK_ANNOUNCEMENT: "announcement.md",
             DetectType.BUYBACK_PROGRESS: "progress.md",
             DetectType.BUYBACK_COMPLETION: "completion.md",
+            DetectType.CORRECTION: "correction.md",
         }
 
         obj = parse_text_by_llm(

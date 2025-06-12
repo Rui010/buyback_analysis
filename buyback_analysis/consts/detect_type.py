@@ -7,4 +7,5 @@ class DetectType(Enum):
     BUYBACK_COMPLETION = "buyback_completion"
     EQUITY_COMPENSATION = "equity_compensation"
     STRATEGIC_TRANSACTION = "strategic_transaction"
+    CORRECTION = "correction"
     OTHER = "other"

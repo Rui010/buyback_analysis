@@ -18,7 +18,7 @@ def parse_text_by_llm(
     title: str, content: str, code: str, name: str, prompt_filename: str
 ) -> Optional[Dict[str, Any]]:
     """
-    Gemini APIを使って大株主情報のJSONデータを辞書で返す。
+    Gemini APIを使ってJSONデータを辞書で返す。
 
     Returns:
         dict: パース済みのデータ（辞書形式）。失敗時は None。
