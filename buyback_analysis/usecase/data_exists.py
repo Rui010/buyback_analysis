@@ -3,6 +3,7 @@ from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.progress import Progress
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.is_checked import IsChecked
+from buyback_analysis.models.correction import Correction
 from buyback_analysis.usecase.logger import Logger
 
 
@@ -29,6 +30,9 @@ def data_exists_in_ir_tables(session: Session, url: str) -> bool:
             return True
         # Completion テーブルで URL を検索
         if session.query(Completion).filter(Completion.url == url).first():
+            return True
+        # Correction テーブルで URL を検索
+        if session.query(Correction).filter(Correction.url == url).first():
             return True
         return False
     except Exception as e:
