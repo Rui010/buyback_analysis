@@ -8,6 +8,7 @@ from buyback_analysis.interface.load_prompt_template import load_prompt_template
 from buyback_analysis.models.is_checked import IsChecked
 from buyback_analysis.usecase.logger import Logger
 from buyback_analysis.consts.detect_type import DetectType
+from buyback_analysis.consts.llm_model import LlmModel
 
 logger = Logger()
 
@@ -59,7 +60,7 @@ def detect_type_by_llm(title: str, content: str) -> str:
         try:
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
-                model="gemini-2.0-flash-lite",
+                model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=prompt,
             )
             time.sleep(1)  # レート制限対策のためのスリープ

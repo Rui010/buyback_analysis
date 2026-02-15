@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
 from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.consts.llm_model import LlmModel
 
 logger = Logger()
 
@@ -40,7 +41,7 @@ def parse_text_by_llm(
         try:
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=prompt,
             )
             time.sleep(1)  # レート制限対策のためのスリープ
