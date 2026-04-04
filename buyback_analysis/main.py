@@ -31,7 +31,7 @@ def main():
     init_db()  # DBの初期化
     postgresql_engine = get_database_engine()
     today = datetime.date.today()
-    start_date = (today - datetime.timedelta(days=90)).strftime("%Y-%m-%d")
+    start_date = (today - datetime.timedelta(days=5)).strftime("%Y-%m-%d")
     end_date = today.strftime("%Y-%m-%d")
     df = get_tdnet_buyback_data(
         engine=postgresql_engine,
@@ -105,6 +105,7 @@ def main():
             continue
         obj["data"]["url"] = row["link"]
         post_data(session, obj)
+        logger.info(f"データを保存しました: {row['code']} - {row['date']}")
 
     session.close()
     logger.info("全てのデータを処理しました")
