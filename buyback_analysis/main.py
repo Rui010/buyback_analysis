@@ -105,7 +105,6 @@ def main():
             continue
         obj["data"]["url"] = row["link"]
         post_data(session, obj)
-        logger.info(f"データを保存しました: {row['code']} - {row['date']}")
 
     session.close()
     logger.info("全てのデータを処理しました")

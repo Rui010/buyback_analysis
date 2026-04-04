@@ -1,3 +1,4 @@
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -33,7 +34,9 @@ def post_data(session: Session, data: dict) -> None:
             raise ValueError("データがNoneです")
         detect_type = DetectType(data["type"])
         ModelClass = model_map[detect_type]
-        instance = ModelClass(**data["data"])
+        columns = {c.key for c in inspect(ModelClass).mapper.column_attrs}
+        filtered = {k: v for k, v in data["data"].items() if k in columns}
+        instance = ModelClass(**filtered)
         session.add(instance)
 
         session.commit()
