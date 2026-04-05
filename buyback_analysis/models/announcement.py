@@ -14,6 +14,7 @@ class Announcement(Base):
 
     code = Column(String, primary_key=True)
     disclosure_date = Column(String, primary_key=True)
+    resolution_date = Column(String)
     url = Column(String)
     company_name = Column(String)
     buyback_method = Column(String)

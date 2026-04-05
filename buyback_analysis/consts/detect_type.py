@@ -8,4 +8,5 @@ class DetectType(Enum):
     EQUITY_COMPENSATION = "equity_compensation"
     STRATEGIC_TRANSACTION = "strategic_transaction"
     CORRECTION = "correction"
+    RETIREMENT = "retirement"
     OTHER = "other"

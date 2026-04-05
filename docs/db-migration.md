@@ -1,6 +1,8 @@
 ## カラムの追加
 
 - `announcements` テーブルにTEXT型の `status` カラムを追加
+- `announcements` テーブルにTEXT型の `resolution_date` カラムを追加
+- `completion` テーブルにTEXT型の `resolution_date` カラムを追加
 
 ## テーブルの追加
 
