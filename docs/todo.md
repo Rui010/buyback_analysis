@@ -76,10 +76,6 @@
 - **対象**: `buyback_analysis/main.py`
 - **内容**: 毎回の実行で「何件処理・何件成功・何件スキップ・何件失敗」のサマリーが出ない。日次確認のためにカウンターを追加してログ出力する
 
-### [業務] `resolution_date` を主キーに含めることの検討
-- **対象**: `buyback_analysis/models/completion.py`, `buyback_analysis/models/announcement.py`
-- **内容**: 同一企業・同日に複数の自社株買いを決議するケースで主キー衝突が起きる可能性がある。`resolution_date` を複合主キーに加えることを検討
-
 ### [システム] テストの導入
 - **対象**: プロジェクト全体
 - **内容**: ユニットテスト・統合テストが存在しない。Gemini API・PDFダウンロード・DBアクセスをモック化した `pytest` ベースのテストを整備する

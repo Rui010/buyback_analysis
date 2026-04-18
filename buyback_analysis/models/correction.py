@@ -1,7 +1,5 @@
 from sqlalchemy import Column, Integer, String, Date, Text, JSON
-from sqlalchemy.orm import declarative_base
-
-Base = declarative_base()
+from buyback_analysis.models.base import Base
 
 
 class Correction(Base):

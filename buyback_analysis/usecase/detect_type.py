@@ -88,7 +88,7 @@ def detect_type_by_llm(title: str, content: str) -> str:
                     logger.error(f"リトライ回数を超えました: {e}")
                     raise SystemExit(
                         "Gemini APIのサーバエラーにより、プログラムを終了します。"
-                    ) < e
+                    ) from e
             else:
                 logger.error(f"Gemini APIの制限に達しました: {e}")
                 raise SystemExit(

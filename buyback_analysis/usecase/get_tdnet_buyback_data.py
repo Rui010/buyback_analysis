@@ -1,9 +1,9 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 
 from buyback_analysis.usecase.logger import Logger
 
-logging = Logger()
+logger = Logger()
 
 
 def get_tdnet_buyback_data(
@@ -21,7 +21,8 @@ def get_tdnet_buyback_data(
     Returns:
         pd.DataFrame: Buyback data.
     """
-    query = f"""
+    query_text = text(
+        """
     SELECT 
           "public"."tdnet"."time" AS "time"
         , "public"."tdnet"."code" AS "code"
@@ -31,19 +32,21 @@ def get_tdnet_buyback_data(
         , "public"."tdnet"."date" AS "date"
     FROM "public"."tdnet"
     WHERE 
-        "public"."tdnet"."date" <= '{end_date}'
-        AND "public"."tdnet"."date" >= '{start_date}'
+        "public"."tdnet"."date" <= :end_date
+        AND "public"."tdnet"."date" >= :start_date
     ORDER BY "public"."tdnet"."date" ASC
     """
+    )
     try:
         with engine.connect() as connection:
             df = pd.read_sql_query(
-                query,
+                query_text,
                 connection,
+                params={"end_date": end_date, "start_date": start_date},
             )
         # Pandasでフィルタリング: 'title' カラムに '自己株' を含む行のみ
         filtered_df = df[df["title"].str.contains("自己株", na=False)]
         return filtered_df
     except Exception as e:
-        logging.error(f"Error fetching data: {e}")
+        logger.error(f"Error fetching data: {e}")
         return pd.DataFrame()

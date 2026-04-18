@@ -14,7 +14,9 @@ class Announcement(Base):
 
     code = Column(String, primary_key=True)
     disclosure_date = Column(String, primary_key=True)
-    resolution_date = Column(String)
+    resolution_date = Column(
+        String, primary_key=True
+    )  # 同一企業・同日に複数決議される場合に対応
     url = Column(String)
     company_name = Column(String)
     buyback_method = Column(String)

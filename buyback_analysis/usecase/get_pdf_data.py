@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 import requests
 from urllib.parse import urlparse
 
+from buyback_analysis.usecase.logger import Logger
+
+logger = Logger()
+
 
 def get_pdf_data(url: str, pud_date_str: str, save_dir="data") -> bytes:
     """
@@ -42,7 +46,7 @@ def get_pdf_data(url: str, pud_date_str: str, save_dir="data") -> bytes:
         with open(save_path, "wb") as out:
             out.write(response.content)
 
-        print(f"PDFファイルを保存しました: {save_path}")
+        logger.info(f"PDFファイルを保存しました: {save_path}")
 
     # PDFファイルの読み込み、テキストデータの抽出
     try:
@@ -55,5 +59,5 @@ def get_pdf_data(url: str, pud_date_str: str, save_dir="data") -> bytes:
                 text += page.extract_text()
         return text
     except Exception as e:
-        print(f"PDFファイルの読み込みに失敗しました: {e}")
+        logger.error(f"PDFファイルの読み込みに失敗しました: {e}")
         return None
