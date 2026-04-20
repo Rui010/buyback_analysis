@@ -56,6 +56,31 @@ class TestPostDataValidation:
             assert session.add.called
             assert session.commit.called
 
+    def test_post_data_retirement_valid(self):
+        """RETIREMENTタイプの有効なデータが正常に保存される"""
+        session = MagicMock()
+
+        data = {
+            "type": "retirement",
+            "data": {
+                "code": "1234",
+                "disclosure_date": "2025-04-18",
+                "retirement_date": "2025-04-01",
+                "company_name": "Test Company",
+                "share_type": "普通株式",
+                "retirement_shares": 1000000,
+            },
+        }
+
+        with patch("buyback_analysis.usecase.post_data.inspect") as mock_inspect:
+            mock_mapper = MagicMock()
+            mock_mapper.mapper.column_attrs = []
+            mock_inspect.return_value = mock_mapper
+
+            post_data(session, data)
+            assert session.add.called
+            assert session.commit.called
+
     def test_post_data_integrity_error_handling(self):
         """主キーエラーはスキップして続行"""
         session = MagicMock()

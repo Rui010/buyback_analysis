@@ -34,6 +34,7 @@ buyback_completion
 equity_compensation
 strategic_transaction
 correction
+retirement
 other
 
 【タイトル】  

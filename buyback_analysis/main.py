@@ -114,6 +114,7 @@ def main():
                 DetectType.BUYBACK_PROGRESS,
                 DetectType.BUYBACK_COMPLETION,
                 DetectType.CORRECTION,
+                DetectType.RETIREMENT,
             ]:
                 logger.error(f"対象外: {row['title']}")
                 skipped_out_of_scope += 1
@@ -124,6 +125,7 @@ def main():
                 DetectType.BUYBACK_PROGRESS: "progress.md",
                 DetectType.BUYBACK_COMPLETION: "completion.md",
                 DetectType.CORRECTION: "correction.md",
+                DetectType.RETIREMENT: "retirement.md",
             }
 
             obj = parse_text_by_llm(

@@ -6,6 +6,7 @@ from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.progress import Progress
 from buyback_analysis.models.correction import Correction
+from buyback_analysis.models.retirement import Retirement
 from buyback_analysis.usecase.logger import Logger
 from buyback_analysis.consts.detect_type import DetectType
 
@@ -29,6 +30,7 @@ def post_data(session: Session, data: dict) -> None:
         DetectType.BUYBACK_PROGRESS: ["code", "disclosure_date"],
         DetectType.BUYBACK_COMPLETION: ["code", "disclosure_date"],
         DetectType.CORRECTION: ["code", "disclosure_date"],
+        DetectType.RETIREMENT: ["code", "disclosure_date"],
     }
 
     model_map = {
@@ -36,6 +38,7 @@ def post_data(session: Session, data: dict) -> None:
         DetectType.BUYBACK_PROGRESS: Progress,
         DetectType.BUYBACK_COMPLETION: Completion,
         DetectType.CORRECTION: Correction,
+        DetectType.RETIREMENT: Retirement,
     }
     try:
         if data is None:
