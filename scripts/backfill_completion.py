@@ -25,7 +25,7 @@ from buyback_analysis.usecase.logger import Logger
 load_dotenv()
 
 PDF_DOWNLOAD_PATH = os.getenv("PDF_DOWNLOAD_PATH", "data")
-CHECKPOINT_FILE = "backfill_completion_checkpoint.txt"
+CHECKPOINT_FILE = os.path.join(os.path.dirname(__file__), "backfill_completion_checkpoint.txt")
 logger = Logger()
 
 
@@ -72,6 +72,8 @@ def main():
     success = 0
     skipped = 0
     failed = 0
+
+    completion_columns = {c.key for c in Completion.__mapper__.column_attrs}
 
     try:
         records = session.query(Completion).all()
@@ -123,17 +125,19 @@ def main():
             new_data = obj.get("data", {})
             new_data["url"] = url
 
-            # DELETE → INSERT
-            session.delete(record)
-            session.flush()
+            code, disclosure_date = record.code, record.disclosure_date
 
-            columns = {c.key for c in Completion.__mapper__.column_attrs}
-            filtered = {k: v for k, v in new_data.items() if k in columns}
+            # DELETE → INSERT（resolution_date が NULL のレコードに対応するため生SQLで削除）
+            session.execute(text("DELETE FROM completion WHERE url = :url"), {"url": url})
+            session.flush()
+            session.expunge(record)  # セッションの追跡から切り離す
+
+            filtered = {k: v for k, v in new_data.items() if k in completion_columns}
             session.add(Completion(**filtered))
             session.commit()
 
             save_checkpoint(url)
-            logger.info(f"上書き完了: code={record.code}, disclosure_date={record.disclosure_date}")
+            logger.info(f"上書き完了: code={code}, disclosure_date={disclosure_date}")
             success += 1
 
     except Exception as e:
