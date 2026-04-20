@@ -4,6 +4,9 @@
 buyback_completion テーブルの過去レコードを修正済みプロンプト（completion.md）で
 再抽出し、DELETE → INSERT で上書きする。
 
+再実行時は checkpoint ファイル（backfill_completion_checkpoint.txt）に記録済みの
+URL をスキップするため、途中失敗後の再実行が安全に行える。
+
 設計書: docs/backfill-completion-design.md
 """
 
@@ -22,7 +25,20 @@ from buyback_analysis.usecase.logger import Logger
 load_dotenv()
 
 PDF_DOWNLOAD_PATH = os.getenv("PDF_DOWNLOAD_PATH", "data")
+CHECKPOINT_FILE = "backfill_completion_checkpoint.txt"
 logger = Logger()
+
+
+def load_checkpoint() -> set[str]:
+    if not os.path.exists(CHECKPOINT_FILE):
+        return set()
+    with open(CHECKPOINT_FILE, encoding="utf-8") as f:
+        return {line.strip() for line in f if line.strip()}
+
+
+def save_checkpoint(url: str) -> None:
+    with open(CHECKPOINT_FILE, "a", encoding="utf-8") as f:
+        f.write(url + "\n")
 
 
 def fetch_tdnet_info_by_urls(pg_engine, urls: list[str]) -> dict[str, dict]:
@@ -48,6 +64,10 @@ def main():
     session = SessionLocal()
     pg_engine = get_database_engine()
 
+    done_urls = load_checkpoint()
+    if done_urls:
+        logger.info(f"チェックポイント読み込み: {len(done_urls)} 件スキップ")
+
     total = 0
     success = 0
     skipped = 0
@@ -55,7 +75,7 @@ def main():
 
     try:
         records = session.query(Completion).all()
-        logger.info(f"バックフィル対象レコード数: {len(records)} 件")
+        logger.info(f"completion テーブル総件数: {len(records)} 件")
 
         urls = [r.url for r in records if r.url]
         tdnet_map = fetch_tdnet_info_by_urls(pg_engine, urls)
@@ -66,6 +86,11 @@ def main():
 
             if not url:
                 logger.error(f"URL が NULL のためスキップ: code={record.code}, disclosure_date={record.disclosure_date}")
+                skipped += 1
+                continue
+
+            if url in done_urls:
+                logger.info(f"処理済みのためスキップ: {url}")
                 skipped += 1
                 continue
 
@@ -107,6 +132,7 @@ def main():
             session.add(Completion(**filtered))
             session.commit()
 
+            save_checkpoint(url)
             logger.info(f"上書き完了: code={record.code}, disclosure_date={record.disclosure_date}")
             success += 1
 
@@ -124,6 +150,9 @@ def main():
     logger.info(f"  スキップ:   {skipped} 件")
     logger.info(f"  失敗:       {failed} 件")
     logger.info("=" * 60)
+
+    if failed == 0:
+        logger.info("全件完了。チェックポイントファイルを削除しても安全です。")
 
 
 if __name__ == "__main__":
