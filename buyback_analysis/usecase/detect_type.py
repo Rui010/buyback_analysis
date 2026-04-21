@@ -68,13 +68,11 @@ def detect_type_by_llm(title: str, content: str) -> str:
 
             # 判定結果がリストに含まれているか確認
             try:
-                ir_type_enum = DetectType(
-                    ir_type_str
-                )  # Enum変換（ここで不正値は弾かれる）
-                return ir_type_enum.value  # または ir_type_enum（用途による）
+                ir_type_enum = DetectType(ir_type_str)
+                return ir_type_enum.value
             except ValueError:
-                logger.error(f"判定結果が不正です: {ir_type_str}")
-                return None
+                logger.error(f"判定結果が不正のため other にフォールバック: [{ir_type_str}]")
+                return DetectType.OTHER.value
 
         except APIError as e:  # API制限エラー
             if e.code in {502, 503, 504}:
