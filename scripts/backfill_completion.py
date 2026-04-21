@@ -125,6 +125,14 @@ def main():
             new_data = obj.get("data", {})
             new_data["url"] = url
 
+            # DELETE前に必須フィールドを検証（失敗してもDBデータを消さないため）
+            required_fields = ["code", "disclosure_date"]
+            missing = [f for f in required_fields if not new_data.get(f)]
+            if missing:
+                logger.error(f"必須フィールド {missing} が欠落のためスキップ: {url}")
+                failed += 1
+                continue
+
             code, disclosure_date = record.code, record.disclosure_date
 
             # DELETE → INSERT（resolution_date が NULL のレコードに対応するため生SQLで削除）
