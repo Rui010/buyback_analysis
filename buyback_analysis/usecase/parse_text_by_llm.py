@@ -15,6 +15,17 @@ from buyback_analysis.consts.llm_model import LlmModel
 logger = Logger()
 
 
+def _sanitize_null_strings(obj: Any) -> Any:
+    """LLMが文字列 "null" を返した場合に Python の None へ変換する。"""
+    if isinstance(obj, dict):
+        return {k: _sanitize_null_strings(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_null_strings(v) for v in obj]
+    if obj == "null":
+        return None
+    return obj
+
+
 def parse_text_by_llm(
     title: str, content: str, code: str, name: str, prompt_filename: str
 ) -> Optional[Dict[str, Any]]:
@@ -49,7 +60,7 @@ def parse_text_by_llm(
             cleaned_text = re.sub(
                 r"^```json\s*|\s*```$", "", response.text.strip(), flags=re.DOTALL
             )
-            return json.loads(cleaned_text)
+            return _sanitize_null_strings(json.loads(cleaned_text))
 
         except APIError as e:  # API制限エラー
             if e.code in {502, 503, 504}:
