@@ -122,7 +122,7 @@ def main():
                 failed += 1
                 continue
 
-            new_data = obj.get("data", {})
+            new_data = obj.get("data") or {}
             new_data["url"] = url
 
             # DELETE前に必須フィールドを検証（失敗してもDBデータを消さないため）
