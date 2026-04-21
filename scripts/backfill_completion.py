@@ -135,18 +135,24 @@ def main():
 
             code, disclosure_date = record.code, record.disclosure_date
 
-            # DELETE → INSERT（resolution_date が NULL のレコードに対応するため生SQLで削除）
-            session.execute(text("DELETE FROM completion WHERE url = :url"), {"url": url})
-            session.flush()
-            session.expunge(record)  # セッションの追跡から切り離す
+            try:
+                # DELETE → INSERT（resolution_date が NULL のレコードに対応するため生SQLで削除）
+                session.execute(text("DELETE FROM completion WHERE url = :url"), {"url": url})
+                session.flush()
+                session.expunge(record)  # セッションの追跡から切り離す
 
-            filtered = {k: v for k, v in new_data.items() if k in completion_columns}
-            session.add(Completion(**filtered))
-            session.commit()
+                filtered = {k: v for k, v in new_data.items() if k in completion_columns}
+                session.add(Completion(**filtered))
+                session.commit()
 
-            save_checkpoint(url)
-            logger.info(f"上書き完了: code={code}, disclosure_date={disclosure_date}")
-            success += 1
+                save_checkpoint(url)
+                logger.info(f"上書き完了: code={code}, disclosure_date={disclosure_date}")
+                success += 1
+
+            except Exception as e:
+                session.rollback()
+                logger.error(f"DB保存エラーのためスキップ: code={code}, url={url} - {e}")
+                failed += 1
 
     except Exception as e:
         session.rollback()
