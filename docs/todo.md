@@ -16,6 +16,10 @@
 - 設計書: `docs/backfill-completion-design.md`
 - 実装: `scripts/backfill_completion.py`（`python scripts/backfill_completion.py` で実行）
 
+### [システム] post_data.py のrowデータ受け取りリファクタリング
+- **対象**: `buyback_analysis/usecase/post_data.py`
+- **内容**: `code` / `url` / `disclosure_date` をLLM出力（`data["data"]`）に依存するのではなく、`post_midterm_plan.py` と同様にrowデータから引数として受け取るよう変更する。LLMが返す値の信頼性を下げ、入力元を明確に分離する。
+
 ### [業務] 発表データと完了データの結合による評価
 - **対象**: `announcements` テーブル × `completion` テーブル（結合分析ビューまたはスクリプト）
 - **内容**: 発表時に約束した自社株買い総数に満たないケースが多い、それを評価したい。`(code, resolution_date)` をキーに結合し、株数達成率（`shares_acquired / buyback_shares`）および金額達成率（`amount_spent_yen / buyback_amount_yen`）を算出する。
