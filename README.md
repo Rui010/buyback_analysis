@@ -59,6 +59,14 @@ TDnetから直接ダウンロードできない過去のPDFは手動で配置し
 
 ファイルが存在する場合はダウンロードをスキップしてそのまま処理を続行します。
 
+### announcements テーブルの resolution_date バックフィル
+
+`resolution_date` カラム追加前に取り込まれた `announcements` の過去レコードに決議日を補完します。
+
+```bash
+python -m scripts.backfill_resolution_date
+```
+
 ### 完了データのバックフィル
 
 `prompts/completion.md` のプロンプト修正前に取り込まれた `buyback_completion` の過去レコードを再抽出・上書きする場合に使用します。
