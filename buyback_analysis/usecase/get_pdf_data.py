@@ -38,9 +38,10 @@ def get_pdf_data(url: str, pud_date_str: str, save_dir="data") -> bytes:
         # リクエスト
         try:
             response = requests.get(url)
-            response.raise_for_status()  # HTTPエラーが発生した場合に例外をスロー
+            response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"ダウンロードに失敗しました: {e}")
+            logger.error(f"PDFのダウンロードに失敗しました: {e}")
+            return None
 
         # PDFファイルの保存
         with open(save_path, "wb") as out:
