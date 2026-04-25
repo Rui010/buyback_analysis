@@ -66,7 +66,7 @@ def main():
         
         logger.info(f"取得対象レコード数: {len(df)}件")
         
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             total_processed += 1
 
             content = get_pdf_data(
@@ -135,7 +135,7 @@ def main():
                 row["name"],
                 template_map[detect_type_enum],
             )
-            logger.debug(f"Parsed object: {obj}")
+            logger.info(f"Parsed object: {obj}")
             if obj is None:
                 logger.error(f"LLMによるパースに失敗しました: {row['link']}")
                 failed_parse += 1
