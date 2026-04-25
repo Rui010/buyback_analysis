@@ -101,7 +101,7 @@ def main(dry_run: bool = False):
 
         resolution_date = extract_resolution_date(content)
         if not resolution_date:
-            logger.warning(f"  resolution_date が抽出できませんでした: {url}")
+            logger.error(f"  resolution_date が抽出できませんでした: {url}")
             failed += 1
             continue
 
