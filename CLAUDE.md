@@ -8,8 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 依存関係のインストール
 pip install -r requirements.txt
 
-# メインパイプラインの実行
+# 自己株買いパイプラインの実行
 python -m buyback_analysis.main
+
+# 中期経営計画パイプラインの実行
+python -m midterm_plan_analysis.main
 ```
 
 ## 環境変数（`.env`）
@@ -26,6 +29,8 @@ python -m buyback_analysis.main
 | `PDF_DOWNLOAD_PATH` | PDFの保存先ディレクトリ |
 
 ## アーキテクチャ概要
+
+### buyback_analysis（自己株買い分析）
 
 ```
 buyback_analysis/
@@ -48,7 +53,8 @@ buyback_analysis/
 │   ├── announcement.md  # 発表データ抽出用
 │   ├── progress.md      # 進捗データ抽出用
 │   ├── completion.md    # 完了データ抽出用
-│   └── correction.md    # 訂正データ抽出用
+│   ├── correction.md    # 訂正データ抽出用
+│   └── midterm_plan.md  # 中期経営計画抽出用（midterm_plan_analysisが参照）
 └── usecase/             # ビジネスロジック
     ├── detect_type.py   # LLMによる文書種別判定
     ├── parse_text_by_llm.py  # LLMによる構造化JSON抽出
@@ -60,7 +66,23 @@ buyback_analysis/
     └── logger.py        # ロガー
 ```
 
+### midterm_plan_analysis（中期経営計画分析）
+
+```
+midterm_plan_analysis/
+├── main.py              # エントリーポイント・パイプライン制御
+├── models/
+│   └── midterm_plan.py  # midterm_plans テーブル（SQLAlchemy ORM）
+└── usecase/
+    ├── get_tdnet_midterm_data.py  # PostgreSQLから「経営計画」「中計」含みタイトルを取得
+    └── post_midterm_plan.py       # SQLiteへの保存
+```
+
+`interface/`・`usecase/logger.py`・`usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` は `buyback_analysis` のものを共用する。
+
 ## データフロー
+
+### buyback_analysis
 
 1. **PostgreSQL**（外部DB）から`tdnet`テーブルの「自己株」含みIR一覧を取得
 2. 各IRのPDFをダウンロードしてテキスト抽出
@@ -68,6 +90,14 @@ buyback_analysis/
 4. 対象外の`DetectType`（`OTHER`, `EQUITY_COMPENSATION`, `STRATEGIC_TRANSACTION`）はスキップ
 5. 対象の文書は種別に対応するプロンプトテンプレートを使い**Gemini**でJSON抽出
 6. 抽出結果を**SQLite**の対応テーブルに保存
+
+### midterm_plan_analysis
+
+1. **PostgreSQL**から`tdnet`テーブルのタイトルに「経営計画」または「中計」を含むIR一覧を取得
+2. 各IRのPDFをダウンロードしてテキスト抽出
+3. `midterm_plans`テーブルの主キー（`code` + `url`）で重複チェック → 処理済みならスキップ
+4. `buyback_analysis/prompts/midterm_plan.md` を使い**Gemini**でJSON抽出
+5. 抽出結果（計画名・開始/終了年度・定量目標一覧）を**SQLite**の`midterm_plans`テーブルに保存
 
 ## 重要な設計上の注意点
 
@@ -77,3 +107,6 @@ buyback_analysis/
 - `parse_text_by_llm()`はGeminiのレスポンスから` ```json ` コードブロックを除去してJSONパースする
 - Gemini APIは`gemini-2.0-flash-lite`を使用。502/503/504エラー時は60秒待機で最大3回リトライ
 - `post_data()`はLLMが返す辞書の`type`フィールドで`DetectType`を判別し、対応するORMモデルにマッピングする
+- `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`get_pdf_data`・`parse_text_by_llm`・`Logger`）を共用する
+- `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
+- `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う
