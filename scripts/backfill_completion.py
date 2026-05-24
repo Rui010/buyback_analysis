@@ -20,7 +20,7 @@ from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 
 load_dotenv()
 

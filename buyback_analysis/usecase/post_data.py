@@ -7,7 +7,7 @@ from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.progress import Progress
 from buyback_analysis.models.correction import Correction
 from buyback_analysis.models.retirement import Retirement
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.detect_type import DetectType
 
 logger = Logger()

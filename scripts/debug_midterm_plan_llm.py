@@ -19,7 +19,7 @@ from sqlalchemy import text
 from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data
 
 load_dotenv()

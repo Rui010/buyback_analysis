@@ -9,7 +9,7 @@ from google.genai.errors import APIError
 from typing import Any, Dict, Optional
 
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.llm_model import LlmModel
 
 logger = Logger()

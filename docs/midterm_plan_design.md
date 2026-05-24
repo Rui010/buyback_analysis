@@ -66,10 +66,18 @@ midterm_plans
   midterm_plan_analysis/
   ├── main.py                        # 中計専用エントリーポイント
   ├── models/midterm_plan.py         # ORMモデル
-  ├── usecase/
-  │   ├── get_tdnet_midterm_data.py  # 「中期経営計画」含みIR取得
-  │   └── post_midterm_plan.py      # SQLite保存
-  └── prompts/midterm_plan.md
+  └── usecase/
+      ├── get_tdnet_midterm_data.py  # 「中期経営計画」含みIR取得
+      └── post_midterm_plan.py      # SQLite保存
+
+  # プロンプト・ユーティリティは buyback_analysis を共用
+  buyback_analysis/
+  ├── prompts/midterm_plan.md        # 中計抽出用プロンプト
+  └── interface/
+      ├── logger.py / notifier.py    # ログ・Slack通知
+      ├── postgresql_engine.py       # DB接続
+      ├── sqlite_engine.py
+      └── load_prompt_template.py
 ```
 
 ---

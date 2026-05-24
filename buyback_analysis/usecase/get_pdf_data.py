@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import requests
 from urllib.parse import urlparse
 
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 
 logger = Logger()
 

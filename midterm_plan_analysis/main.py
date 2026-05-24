@@ -6,10 +6,11 @@ from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan  # init_db() に登録するためインポート
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data
 from midterm_plan_analysis.usecase.post_midterm_plan import post_midterm_plan
+from buyback_analysis.interface.notifier import notify_success, notify_error
 
 load_dotenv()
 
@@ -106,6 +107,18 @@ def main():
         logger.info(f"  PDF取得失敗:     {failed_pdf}件")
         logger.info(f"  パース/判定失敗: {failed_parse}件")
         logger.info("=" * 60)
+
+        summary = (
+            f"総処理:{total_processed}件 / 保存:{successful_saves}件 / "
+            f"重複スキップ:{skipped_duplicates}件 / "
+            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件"
+        )
+        notify_success("midterm_plan_analysis", summary)
+
+    except Exception as e:
+        logger.error(f"パイプラインで予期しないエラーが発生しました: {e}")
+        notify_error("midterm_plan_analysis", str(e))
+        raise
 
     finally:
         session.close()

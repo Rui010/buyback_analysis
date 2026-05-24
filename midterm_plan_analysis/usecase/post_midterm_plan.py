@@ -3,7 +3,7 @@ import json
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan
 
 logger = Logger()

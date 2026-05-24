@@ -27,6 +27,9 @@ python -m midterm_plan_analysis.main
 | `POSTGRESQL_DB_PASSWORD` | PostgreSQLパスワード |
 | `GEMINI_API_KEY` | Google Gemini API キー |
 | `PDF_DOWNLOAD_PATH` | PDFの保存先ディレクトリ |
+| `SLACK_TOKEN` | Slack Bot トークン（省略時は通知しない） |
+| `SLACK_CHANNEL` | 通知先チャンネル（例: `#alerts`） |
+| `SLACK_MENTION` | エラー時のメンション先（例: `@username`、省略可） |
 
 ## アーキテクチャ概要
 
@@ -40,7 +43,9 @@ buyback_analysis/
 ├── interface/
 │   ├── postgresql_engine.py   # TDnetデータ読み込み用DB接続
 │   ├── sqlite_engine.py       # 結果保存用SQLite接続・init_db()
-│   └── load_prompt_template.py  # prompts/*.md を読み込みformat()
+│   ├── load_prompt_template.py  # prompts/*.md を読み込みformat()
+│   ├── logger.py              # ロガー
+│   └── notifier.py            # Slack通知
 ├── models/              # SQLAlchemy ORMモデル（SQLite用）
 │   ├── base.py
 │   ├── announcement.py  # buyback_announcements テーブル
@@ -62,8 +67,7 @@ buyback_analysis/
     ├── post_url.py      # is_checkedテーブルへのURL登録
     ├── get_tdnet_buyback_data.py  # PostgreSQLから「自己株」含みタイトルを取得
     ├── get_pdf_data.py  # PDFダウンロード・テキスト抽出
-    ├── data_exists.py   # 重複チェック
-    └── logger.py        # ロガー
+    └── data_exists.py   # 重複チェック
 ```
 
 ### midterm_plan_analysis（中期経営計画分析）
@@ -78,7 +82,7 @@ midterm_plan_analysis/
     └── post_midterm_plan.py       # SQLiteへの保存
 ```
 
-`interface/`・`usecase/logger.py`・`usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` は `buyback_analysis` のものを共用する。
+`interface/`・`usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` は `buyback_analysis` のものを共用する。
 
 ## データフロー
 
@@ -107,6 +111,6 @@ midterm_plan_analysis/
 - `parse_text_by_llm()`はGeminiのレスポンスから` ```json ` コードブロックを除去してJSONパースする
 - Gemini APIは`gemini-2.0-flash-lite`を使用。502/503/504エラー時は60秒待機で最大3回リトライ
 - `post_data()`はLLMが返す辞書の`type`フィールドで`DetectType`を判別し、対応するORMモデルにマッピングする
-- `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`get_pdf_data`・`parse_text_by_llm`・`Logger`）を共用する
+- `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`logger`・`notifier`・`get_pdf_data`・`parse_text_by_llm`）を共用する
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
 - `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う

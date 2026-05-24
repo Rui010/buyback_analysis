@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 import pandas as pd
 
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 
 logger = Logger()
 

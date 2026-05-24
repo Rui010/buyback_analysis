@@ -3,7 +3,7 @@ from sqlalchemy.exc import OperationalError
 from dotenv import load_dotenv
 import os
 
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 
 load_dotenv()
 

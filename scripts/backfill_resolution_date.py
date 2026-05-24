@@ -16,7 +16,7 @@ from google import genai
 from sqlalchemy import create_engine, text
 
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
-from buyback_analysis.usecase.logger import Logger
+from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.llm_model import LlmModel
 
 load_dotenv()
