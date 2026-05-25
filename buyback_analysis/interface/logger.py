@@ -1,21 +1,32 @@
 import json
 import logging
 import os
+from logging.handlers import TimedRotatingFileHandler
 
 
 class Logger:
     def __init__(
-        self, log_dir="logs", log_file="app.log", failed_data_file="failed_data.log"
+        self, log_dir=None, log_file="app.log", failed_data_file="failed_data.log"
     ):
+        log_dir = log_dir or os.getenv("LOG_DIR", "logs")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, log_file)
         self.failed_data_path = os.path.join(log_dir, failed_data_file)
+
+        backup_count = int(os.getenv("LOG_BACKUP_COUNT", "30"))
+        rotating_handler = TimedRotatingFileHandler(
+            log_path,
+            when="midnight",
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+        rotating_handler.suffix = "%Y-%m-%d"
 
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(message)s",
             handlers=[
-                logging.FileHandler(log_path, encoding="utf-8"),
+                rotating_handler,
                 logging.StreamHandler(),
             ],
         )
