@@ -69,3 +69,4 @@ def post_data(session: Session, data: dict) -> None:
     except Exception as e:
         session.rollback()
         logger.log_failed_data(data, str(e))
+        raise

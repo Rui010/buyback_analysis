@@ -137,12 +137,18 @@ def main():
                 template_map[detect_type_enum],
             )
             logger.info(f"Parsed object: {obj}")
-            if obj is None:
+            if obj is None or obj.get("data") is None:
                 logger.error(f"LLMによるパースに失敗しました: {row['link']}")
                 failed_parse += 1
                 continue
             obj["data"]["url"] = row["link"]
-            post_data(session, obj)
+            obj["data"]["disclosure_date"] = row["date"].strftime("%Y-%m-%d")
+            try:
+                post_data(session, obj)
+            except Exception as e:
+                logger.error(f"データの保存に失敗しました: {row['link']} - {e}")
+                failed_parse += 1
+                continue
             logger.info(f"データを保存しました: {row['code']} - {row['date']}")
             successful_saves += 1
 
