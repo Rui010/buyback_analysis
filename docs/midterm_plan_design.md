@@ -95,6 +95,98 @@ midterm_plans
 
 **推奨：** まずそのまま投げ、問題が出てから絞り込みを追加する
 
+---
+
+## ネイティブPDF処理方式の追加（精度改善）
+
+### 背景
+
+現在の処理は `pypdf` でテキストを抽出してからLLMに渡しているが、中計PDFは表・グラフが多く、テキスト抽出で数値が欠落・崩れるケースがある。  
+Gemini Files API を使いPDFをそのまま渡す「ネイティブPDF方式」を新たに追加し、用途に応じて使い分けられるようにする。
+
+### コスト面
+
+`gemini-2.5-flash-lite` はテキストと画像（PDF）のトークン単価が同一（$0.10/1Mトークン）。  
+PDF1ページ≒258トークンのため、20ページの中計PDFでも1件あたりのコスト差は約0.2円程度。
+
+### 追加するファイル
+
+```
+buyback_analysis/
+└── usecase/
+    ├── get_pdf_data.py        # 既存：ダウンロード＋テキスト抽出
+    ├── get_pdf_path.py        # ★新規：ダウンロードのみ（ローカルパスを返す）
+    ├── parse_text_by_llm.py   # 既存：テキストをGeminiへ送信
+    └── parse_pdf_by_llm.py    # ★新規：PDFファイルをFiles APIでGeminiへ送信
+
+buyback_analysis/
+└── prompts/
+    ├── midterm_plan.md        # 既存：{content} あり（テキスト方式用）
+    └── midterm_plan_native.md # ★新規：{content} なし（ネイティブPDF方式用）
+```
+
+### 処理フロー
+
+```
+【テキスト方式（既存）】
+get_pdf_data(url, date, save_dir)          # ダウンロード＋テキスト抽出
+  └─ 内部で get_pdf_path() を呼んでパスを得た後にテキスト抽出（リファクタ）
+parse_text_by_llm(title, content, ...)     # テキストをプロンプトに埋め込んで送信
+
+【ネイティブPDF方式（新規）】
+get_pdf_path(url, date, save_dir)          # ダウンロードのみ、ローカルパスを返す
+parse_pdf_by_llm(title, pdf_path, ...)     # Files APIでPDFをアップロード→送信→削除
+```
+
+### `get_pdf_path.py` の責務
+
+- PDFをダウンロードしてローカルに保存する（キャッシュあり）
+- ローカルパス（`str`）を返す
+- `get_pdf_data.py` はこの関数を内部で呼び出してテキスト抽出を追加する形にリファクタする
+
+### `parse_pdf_by_llm.py` の責務
+
+```python
+def parse_pdf_by_llm(
+    title: str, pdf_path: str, code: str, name: str, prompt_filename: str
+) -> Optional[Dict[str, Any]]:
+    # 1. PDFをGemini Files APIにアップロード
+    pdf_file = client.files.upload(path=pdf_path, config={"mime_type": "application/pdf"})
+    # 2. {content} を持たないプロンプトテンプレートをロード
+    prompt = load_prompt_template(prompt_filename, title=title, code=code, name=name)
+    # 3. [pdf_file, prompt] のリストで generate_content を呼ぶ
+    response = client.models.generate_content(
+        model=LlmModel.LLM_MODEL_GEMINI.value,
+        contents=[pdf_file, prompt],
+    )
+    # 4. アップロードファイルを削除
+    client.files.delete(name=pdf_file.name)
+    # 5. レスポンスをJSONパース（parse_text_by_llm と同様）
+```
+
+### 呼び出し側での使い分け（`midterm_plan_analysis/main.py`）
+
+```python
+USE_NATIVE_PDF = os.getenv("USE_NATIVE_PDF", "false").lower() == "true"
+
+if USE_NATIVE_PDF:
+    pdf_path = get_pdf_path(url, date, PDF_DOWNLOAD_PATH)
+    obj = parse_pdf_by_llm(title, pdf_path, code, name, "midterm_plan_native.md")
+else:
+    content = get_pdf_data(url, date, PDF_DOWNLOAD_PATH)
+    obj = parse_text_by_llm(title, content, code, name, "midterm_plan.md")
+```
+
+環境変数 `USE_NATIVE_PDF=true` でネイティブPDF方式に切り替え可能とする。
+
+### 実装の推奨順序
+
+1. `get_pdf_path.py` を追加し、`get_pdf_data.py` をリファクタ
+2. `parse_pdf_by_llm.py` を追加
+3. `midterm_plan_native.md` プロンプトを追加（`{content}` プレースホルダーを除去）
+4. `midterm_plan_analysis/main.py` に `USE_NATIVE_PDF` 切り替えを追加
+5. 同一PDFで両方式の抽出結果を比較し、精度を確認する
+
 ### 2. 同じ企業の複数バージョン管理
 
 企業が複数年度の中計を開示したり、訂正版を出す場合がある。
