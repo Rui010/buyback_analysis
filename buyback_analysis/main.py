@@ -28,7 +28,7 @@ DAYS_BACK = int(os.getenv("DAYS_BACK", "5"))  # デフォルト5日
 SYSTEM_START_DATE = os.getenv("SYSTEM_START_DATE")  # YYYY-MM-DD形式
 SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")    # YYYY-MM-DD形式
 
-USE_NATIVE_PDF = os.getenv("USE_NATIVE_PDF", "false").lower() == "true"
+USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 
 
 logger = Logger()
