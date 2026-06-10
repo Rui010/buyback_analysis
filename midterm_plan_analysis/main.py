@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
+from buyback_analysis.usecase.get_pdf_path import get_pdf_path
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
+from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan  # init_db() に登録するためインポート
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data
@@ -18,6 +20,8 @@ PDF_DOWNLOAD_PATH = os.getenv("PDF_DOWNLOAD_PATH")
 DAYS_BACK = int(os.getenv("DAYS_BACK", "5"))
 SYSTEM_START_DATE = os.getenv("SYSTEM_START_DATE")
 SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")
+
+USE_NATIVE_PDF = os.getenv("USE_NATIVE_PDF", "false").lower() == "true"
 
 logger = Logger()
 
@@ -67,23 +71,40 @@ def main():
                 skipped_duplicates += 1
                 continue
 
-            content = get_pdf_data(
-                url=url,
-                pud_date_str=row["date"].strftime("%Y%m%d"),
-                save_dir=PDF_DOWNLOAD_PATH,
-            )
-            if content is None:
-                logger.error(f"PDFの取得に失敗しました: {url}")
-                failed_pdf += 1
-                continue
-
-            obj = parse_text_by_llm(
-                title=row["title"],
-                content=content,
-                code=code,
-                name=row["name"],
-                prompt_filename="midterm_plan.md",
-            )
+            if USE_NATIVE_PDF:
+                pdf_path = get_pdf_path(
+                    url=url,
+                    pud_date_str=row["date"].strftime("%Y%m%d"),
+                    save_dir=PDF_DOWNLOAD_PATH,
+                )
+                if pdf_path is None:
+                    logger.error(f"PDFの取得に失敗しました: {url}")
+                    failed_pdf += 1
+                    continue
+                obj = parse_pdf_by_llm(
+                    title=row["title"],
+                    pdf_path=pdf_path,
+                    code=code,
+                    name=row["name"],
+                    prompt_filename="midterm_plan_native.md",
+                )
+            else:
+                content = get_pdf_data(
+                    url=url,
+                    pud_date_str=row["date"].strftime("%Y%m%d"),
+                    save_dir=PDF_DOWNLOAD_PATH,
+                )
+                if content is None:
+                    logger.error(f"PDFの取得に失敗しました: {url}")
+                    failed_pdf += 1
+                    continue
+                obj = parse_text_by_llm(
+                    title=row["title"],
+                    content=content,
+                    code=code,
+                    name=row["name"],
+                    prompt_filename="midterm_plan.md",
+                )
             if obj is None:
                 logger.error(f"LLMによるパースに失敗しました: {url}")
                 failed_parse += 1
