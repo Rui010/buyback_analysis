@@ -58,7 +58,7 @@ def parse_pdf_by_llm(
             client = genai.Client(api_key=api_key)
 
             pdf_file = client.files.upload(
-                path=pdf_path,
+                file=pdf_path,
                 config={"mime_type": "application/pdf"},
             )
 
