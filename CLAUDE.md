@@ -30,6 +30,8 @@ python -m midterm_plan_analysis.main
 | `SLACK_TOKEN` | Slack Bot トークン（省略時は通知しない） |
 | `SLACK_CHANNEL` | 通知先チャンネル（例: `#alerts`） |
 | `SLACK_MENTION` | エラー時のメンション先（例: `@username`、省略可） |
+| `BUYBACK_USE_NATIVE_PDF` | `true` でbuyback_analysisの抽出ステップをネイティブPDF方式に切り替え（省略時は`false`） |
+| `MIDTERM_USE_NATIVE_PDF` | `true` でmidterm_plan_analysisをネイティブPDF方式に切り替え（省略時は`false`） |
 
 ## アーキテクチャ概要
 

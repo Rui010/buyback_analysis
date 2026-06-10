@@ -8,7 +8,9 @@ from buyback_analysis.interface.logger import Logger
 from buyback_analysis.usecase.post_data import post_data
 from buyback_analysis.usecase.get_tdnet_buyback_data import get_tdnet_buyback_data
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
+from buyback_analysis.usecase.get_pdf_path import get_pdf_path
 from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
+from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.usecase.detect_type import (
     detect_type_by_llm,
     get_detect_type_in_db,
@@ -25,6 +27,8 @@ PDF_DOWNLOAD_PATH = os.getenv("PDF_DOWNLOAD_PATH")
 DAYS_BACK = int(os.getenv("DAYS_BACK", "5"))  # デフォルト5日
 SYSTEM_START_DATE = os.getenv("SYSTEM_START_DATE")  # YYYY-MM-DD形式
 SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")    # YYYY-MM-DD形式
+
+USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 
 
 logger = Logger()
@@ -128,14 +132,35 @@ def main():
                 DetectType.CORRECTION: "correction.md",
                 DetectType.RETIREMENT: "retirement.md",
             }
+            native_template_map = {
+                DetectType.BUYBACK_ANNOUNCEMENT: "announcement_native.md",
+                DetectType.BUYBACK_PROGRESS: "progress_native.md",
+                DetectType.BUYBACK_COMPLETION: "completion_native.md",
+                DetectType.CORRECTION: "correction_native.md",
+                DetectType.RETIREMENT: "retirement_native.md",
+            }
 
-            obj = parse_text_by_llm(
-                row["title"],
-                content,
-                row["code"],
-                row["name"],
-                template_map[detect_type_enum],
-            )
+            if USE_NATIVE_PDF:
+                pdf_path = get_pdf_path(
+                    url=row["link"],
+                    pud_date_str=row["date"].strftime("%Y%m%d"),
+                    save_dir=PDF_DOWNLOAD_PATH,
+                )
+                obj = parse_pdf_by_llm(
+                    row["title"],
+                    pdf_path,
+                    row["code"],
+                    row["name"],
+                    native_template_map[detect_type_enum],
+                )
+            else:
+                obj = parse_text_by_llm(
+                    row["title"],
+                    content,
+                    row["code"],
+                    row["name"],
+                    template_map[detect_type_enum],
+                )
             logger.info(f"Parsed object: {obj}")
             if obj is None or obj.get("data") is None:
                 logger.error(f"LLMによるパースに失敗しました: {row['link']}")
