@@ -111,7 +111,7 @@ midterm_plan_analysis/
 - `is_checked`テーブルがURLの処理済み管理を担う。データ保存の重複チェックは`data_exists_in_ir_tables()`が別途担当
 - プロンプトテンプレート（`prompts/*.md`）は`{title}`, `{content}`, `{code}`, `{name}` などのPython `str.format()`プレースホルダーを使う
 - `parse_text_by_llm()`はGeminiのレスポンスから` ```json ` コードブロックを除去してJSONパースする
-- Gemini APIは`gemini-2.0-flash-lite`を使用。502/503/504エラー時は60秒待機で最大3回リトライ
+- Gemini APIは`gemini-2.5-flash-lite`を使用。502/503/504エラー時は60秒待機で最大3回リトライ
 - `post_data()`はLLMが返す辞書の`type`フィールドで`DetectType`を判別し、対応するORMモデルにマッピングする
 - `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`logger`・`notifier`・`get_pdf_data`・`parse_text_by_llm`）を共用する
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）

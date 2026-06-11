@@ -28,7 +28,9 @@ def get_detect_type_in_db(session, link) -> str:
         result = session.query(IsChecked).filter_by(url=link).first()
         if result is None:
             return None
-        return result.detected_type  # ←カラム名に合わせて修正
+        if result.parse_status == "failed":
+            return None  # 失敗レコードは再試行させる
+        return result.detected_type
     except Exception as e:
         logger.error(f"データベースからの取得に失敗しました: {e}")
         return None

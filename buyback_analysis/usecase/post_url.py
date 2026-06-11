@@ -9,28 +9,50 @@ logger = Logger()
 
 def post_url(session: Session, code: str, url: str, detected_type: str) -> None:
     """
-    データをSQLiteデータベースに保存する関数
+    URLと検出タイプを is_checked テーブルに保存する関数。
+    URL が既存の場合（失敗レコードの再試行）は parse_status を pending にリセットする。
 
     Args:
-        data (dict): 保存するデータ（辞書形式）
-
-    Raises:
-        ValueError: 必要な環境変数が設定されていない場合
-        RuntimeError: データの保存に失敗した場合
+        session: SQLAlchemyのセッション
+        code: 証券コード
+        url: 対象のURL
+        detected_type: 検出されたドキュメントタイプ
     """
-
     try:
         is_checked = IsChecked(
             code=code,
             url=url,
             detected_type=detected_type,
+            parse_status="pending",
         )
         session.add(is_checked)
         session.commit()
-        logger.info("データが正常に保存されました")
-    except IntegrityError as e:
-        # 主キーエラーの場合はスキップして続行
+        logger.info(f"is_checked に登録しました: {url}")
+    except IntegrityError:
+        # URL重複 = 失敗レコードの再試行。pending にリセットして再パースへ
         session.rollback()
-        logger.info(f"主キーエラーによりスキップしました: {e}")
+        session.query(IsChecked).filter_by(url=url).update(
+            {"detected_type": detected_type, "parse_status": "pending"}
+        )
+        session.commit()
+        logger.info(f"失敗レコードを pending にリセットしました: {url}")
     except Exception as e:
         session.rollback()
+        logger.error(f"URLの保存に失敗しました: {url} - {e}")
+
+
+def update_parse_status(session: Session, url: str, status: str) -> None:
+    """
+    is_checked の parse_status を更新する。
+
+    Args:
+        session: SQLAlchemyのセッション
+        url: 対象のURL
+        status: 新しいステータス（saved / failed / pending / skipped）
+    """
+    try:
+        session.query(IsChecked).filter_by(url=url).update({"parse_status": status})
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"parse_status の更新に失敗しました: {url} - {e}")

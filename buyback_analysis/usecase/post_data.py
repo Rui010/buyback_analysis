@@ -28,7 +28,7 @@ def post_data(session: Session, data: dict) -> None:
     required_fields = {
         DetectType.BUYBACK_ANNOUNCEMENT: ["code", "disclosure_date"],
         DetectType.BUYBACK_PROGRESS: ["code", "disclosure_date"],
-        DetectType.BUYBACK_COMPLETION: ["code", "disclosure_date"],
+        DetectType.BUYBACK_COMPLETION: ["code", "disclosure_date", "shares_acquired", "amount_spent_yen"],
         DetectType.CORRECTION: ["code", "disclosure_date"],
         DetectType.RETIREMENT: ["code", "disclosure_date"],
     }

@@ -16,7 +16,7 @@ from buyback_analysis.usecase.detect_type import (
     get_detect_type_in_db,
 )
 from buyback_analysis.consts.detect_type import DetectType
-from buyback_analysis.usecase.post_url import post_url
+from buyback_analysis.usecase.post_url import post_url, update_parse_status
 from buyback_analysis.interface.notifier import notify_success, notify_error
 
 load_dotenv()
@@ -32,7 +32,6 @@ USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 
 
 logger = Logger()
-session = SessionLocal()
 
 
 def main():
@@ -111,6 +110,7 @@ def main():
 
             if data_exists_in_ir_tables(session, row["link"]):
                 logger.info(f"データが既に存在します: {row['code']} - {row['date']}")
+                update_parse_status(session, row["link"], "saved")
                 skipped_duplicates += 1
                 continue
 
@@ -122,6 +122,7 @@ def main():
                 DetectType.RETIREMENT,
             ]:
                 logger.error(f"対象外: {row['title']}")
+                update_parse_status(session, row["link"], "skipped")
                 skipped_out_of_scope += 1
                 continue
 
@@ -164,6 +165,7 @@ def main():
             logger.info(f"Parsed object: {obj}")
             if obj is None or obj.get("data") is None:
                 logger.error(f"LLMによるパースに失敗しました: {row['link']}")
+                update_parse_status(session, row["link"], "failed")
                 failed_parse += 1
                 continue
             obj["data"]["url"] = row["link"]
@@ -172,8 +174,10 @@ def main():
                 post_data(session, obj)
             except Exception as e:
                 logger.error(f"データの保存に失敗しました: {row['link']} - {e}")
+                update_parse_status(session, row["link"], "failed")
                 failed_parse += 1
                 continue
+            update_parse_status(session, row["link"], "saved")
             logger.info(f"データを保存しました: {row['code']} - {row['date']}")
             successful_saves += 1
 
@@ -193,7 +197,10 @@ def main():
             f"重複スキップ:{skipped_duplicates}件 / 対象外:{skipped_out_of_scope}件 / "
             f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件"
         )
-        notify_success("buyback_analysis", summary)
+        if failed_parse > 0 or failed_pdf > 0:
+            notify_error("buyback_analysis", summary)
+        else:
+            notify_success("buyback_analysis", summary)
 
     except Exception as e:
         logger.error(f"パイプラインで予期しないエラーが発生しました: {e}")
