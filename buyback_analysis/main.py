@@ -121,7 +121,7 @@ def main():
                 DetectType.CORRECTION,
                 DetectType.RETIREMENT,
             ]:
-                logger.error(f"対象外: {row['title']}")
+                logger.info(f"対象外スキップ: {row['title']}")
                 update_parse_status(session, row["link"], "skipped")
                 skipped_out_of_scope += 1
                 continue
