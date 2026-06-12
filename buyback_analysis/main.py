@@ -186,6 +186,22 @@ def main():
                     row["name"],
                     template_map[detect_type_enum],
                 )
+                # テキスト抽出失敗時はネイティブPDFでフォールバック
+                if obj is None or obj.get("data") is None:
+                    pdf_path = get_pdf_path(
+                        url=row["link"],
+                        pud_date_str=row["date"].strftime("%Y%m%d"),
+                        save_dir=PDF_DOWNLOAD_PATH,
+                    )
+                    if pdf_path:
+                        logger.info(f"テキストパース失敗、ネイティブPDFで再試行: {row['link']}")
+                        obj = parse_pdf_by_llm(
+                            row["title"],
+                            pdf_path,
+                            row["code"],
+                            row["name"],
+                            native_template_map[detect_type_enum],
+                        )
             logger.info(f"Parsed object: {obj}")
             if obj is None or obj.get("data") is None:
                 logger.error(f"LLMによるパースに失敗しました: {row['link']}")
