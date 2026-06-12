@@ -73,6 +73,32 @@ def main():
         for _, row in df.iterrows():
             total_processed += 1
 
+            # saved/skipped は PDF取得前にスキップ（不要なダウンロードを回避）
+            detect_type_str = get_detect_type_in_db(session, row["link"])
+            if detect_type_str is not None:
+                try:
+                    detect_type_enum = DetectType(detect_type_str)
+                except ValueError:
+                    logger.error(f"DBに登録されているタイプ値が不正です: {row['link']}")
+                    failed_parse += 1
+                    continue
+                if data_exists_in_ir_tables(session, row["link"]):
+                    logger.info(f"データが既に存在します: {row['code']} - {row['date']}")
+                    update_parse_status(session, row["link"], "saved")
+                    skipped_duplicates += 1
+                    continue
+                if detect_type_enum not in [
+                    DetectType.BUYBACK_ANNOUNCEMENT,
+                    DetectType.BUYBACK_PROGRESS,
+                    DetectType.BUYBACK_COMPLETION,
+                    DetectType.CORRECTION,
+                    DetectType.RETIREMENT,
+                ]:
+                    logger.info(f"対象外スキップ: {row['title']}")
+                    update_parse_status(session, row["link"], "skipped")
+                    skipped_out_of_scope += 1
+                    continue
+
             content = get_pdf_data(
                 url=row["link"],
                 pud_date_str=row["date"].strftime("%Y%m%d"),
@@ -82,8 +108,6 @@ def main():
                 logger.error(f"PDFの取得に失敗しました: {row['link']}")
                 failed_pdf += 1
                 continue
-
-            detect_type_str = get_detect_type_in_db(session, row["link"])
 
             if detect_type_str is None:
                 detect_type_str = detect_type_by_llm(row["title"], content)
