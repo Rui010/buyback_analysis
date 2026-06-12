@@ -225,7 +225,7 @@ SQLAlchemy モデルの定義と実際のSQLite DBスキーマが一致してい
 |---|------|--------|-----------|------|
 | 1 | `ir_type.md` 修正: ToSTNeT-3 実績文書を `buyback_completion` に分類するよう追記 | 高 | Issue A | ✅ 完了 |
 | 2 | `logs/migrate_tostnet_to_completion.sql` を SQLite に実行して 247件を削除 | 高 | Issue A | ✅ 完了 |
-| 3 | migration SQL 実行後、パイプラインを再実行して `failed` 件数の解消を確認 | 高 | Issue A | 未実行 |
+| 3 | migration SQL 実行後、パイプラインを再実行して `failed` 件数の解消を確認 | 高 | Issue A | ✅ 完了 |
 | 4 | `retirement.md` プロンプト改善 + `REQUIRED_FIELDS` 追加（retirement_date） | 中 | Issue D | ✅ 完了 |
 | 5 | `correction.md` プロンプト改善 + `REQUIRED_FIELDS` 追加（original_announcement_date） | 中 | Issue D | ✅ 完了 |
 | 5a | `logs/reset_issue_d.sql` を SQLite で実行して11件をリセット → パイプライン再実行 | 中 | Issue D | ✅ 完了 |
