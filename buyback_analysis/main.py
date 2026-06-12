@@ -32,6 +32,8 @@ USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 
 REQUIRED_FIELDS = {
     DetectType.BUYBACK_COMPLETION: ["shares_acquired", "amount_spent_yen"],
+    DetectType.RETIREMENT: ["retirement_date"],
+    DetectType.CORRECTION: ["original_announcement_date"],
 }
 
 logger = Logger()
