@@ -30,8 +30,22 @@ SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")    # YYYY-MM-DD形式
 
 USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 
+REQUIRED_FIELDS = {
+    DetectType.BUYBACK_COMPLETION: ["shares_acquired", "amount_spent_yen"],
+}
 
 logger = Logger()
+
+
+def _needs_native_fallback(obj, detect_type_enum: DetectType) -> bool:
+    """テキストパース結果がネイティブPDFフォールバックを要するか判定する。"""
+    if obj is None or obj.get("data") is None:
+        return True
+    data = obj["data"]
+    for field in REQUIRED_FIELDS.get(detect_type_enum, []):
+        if data.get(field) is None:
+            return True
+    return False
 
 
 def main():
@@ -186,8 +200,8 @@ def main():
                     row["name"],
                     template_map[detect_type_enum],
                 )
-                # テキスト抽出失敗時はネイティブPDFでフォールバック
-                if obj is None or obj.get("data") is None:
+                # パース失敗または必須フィールド不足時はネイティブPDFでフォールバック
+                if _needs_native_fallback(obj, detect_type_enum):
                     pdf_path = get_pdf_path(
                         url=row["link"],
                         pud_date_str=row["date"].strftime("%Y%m%d"),
