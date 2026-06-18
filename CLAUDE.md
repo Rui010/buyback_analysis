@@ -32,6 +32,7 @@ python -m midterm_plan_analysis.main
 | `SLACK_MENTION` | エラー時のメンション先（例: `@username`、省略可） |
 | `BUYBACK_USE_NATIVE_PDF` | `true` でbuyback_analysisの抽出ステップをネイティブPDF方式に切り替え（省略時は`false`） |
 | `MIDTERM_USE_NATIVE_PDF` | `true` でmidterm_plan_analysisをネイティブPDF方式に切り替え（省略時は`false`） |
+| `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLの既存データを削除して強制再処理する（両パイプライン共通） |
 
 ## アーキテクチャ概要
 

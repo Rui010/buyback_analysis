@@ -7,6 +7,39 @@ logger = Logger()
 
 MIDTERM_KEYWORDS = ["経営計画", "中計"]
 
+_SELECT_COLUMNS = """
+    SELECT
+          "public"."tdnet"."time" AS "time"
+        , "public"."tdnet"."code" AS "code"
+        , "public"."tdnet"."name" AS "name"
+        , "public"."tdnet"."title" AS "title"
+        , "public"."tdnet"."link" AS "link"
+        , "public"."tdnet"."date" AS "date"
+    FROM "public"."tdnet"
+"""
+
+
+def get_tdnet_midterm_data_by_urls(
+    engine: create_engine,
+    urls: list,
+) -> pd.DataFrame:
+    """指定 URL リストに一致する tdnet レコードを取得する（日付フィルタなし）。"""
+    if not urls:
+        return pd.DataFrame()
+    placeholders = ", ".join([f":u{i}" for i in range(len(urls))])
+    query_text = text(
+        f'{_SELECT_COLUMNS} WHERE "public"."tdnet"."link" IN ({placeholders})'
+        ' ORDER BY "public"."tdnet"."date" ASC'
+    )
+    params = {f"u{i}": url for i, url in enumerate(urls)}
+    try:
+        with engine.connect() as connection:
+            df = pd.read_sql_query(query_text, connection, params=params)
+        return df
+    except Exception as e:
+        logger.error(f"Error fetching data by URLs: {e}")
+        return pd.DataFrame()
+
 
 def get_tdnet_midterm_data(
     engine: create_engine,
@@ -24,20 +57,10 @@ def get_tdnet_midterm_data(
         pd.DataFrame: Midterm plan data.
     """
     query_text = text(
-        """
-    SELECT
-          "public"."tdnet"."time" AS "time"
-        , "public"."tdnet"."code" AS "code"
-        , "public"."tdnet"."name" AS "name"
-        , "public"."tdnet"."title" AS "title"
-        , "public"."tdnet"."link" AS "link"
-        , "public"."tdnet"."date" AS "date"
-    FROM "public"."tdnet"
-    WHERE
-        "public"."tdnet"."date" <= :end_date
-        AND "public"."tdnet"."date" >= :start_date
-    ORDER BY "public"."tdnet"."date" ASC
-    """
+        f'{_SELECT_COLUMNS}'
+        ' WHERE "public"."tdnet"."date" <= :end_date'
+        ' AND "public"."tdnet"."date" >= :start_date'
+        ' ORDER BY "public"."tdnet"."date" ASC'
     )
     try:
         with engine.connect() as connection:

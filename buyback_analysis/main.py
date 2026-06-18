@@ -17,6 +17,8 @@ from buyback_analysis.usecase.detect_type import (
 )
 from buyback_analysis.consts.detect_type import DetectType
 from buyback_analysis.usecase.post_url import post_url, update_parse_status
+from buyback_analysis.usecase.delete_data import delete_by_url
+from buyback_analysis.usecase.get_tdnet_buyback_data import get_tdnet_buyback_data_by_urls
 from buyback_analysis.interface.notifier import notify_success, notify_error
 
 load_dotenv()
@@ -29,6 +31,7 @@ SYSTEM_START_DATE = os.getenv("SYSTEM_START_DATE")  # YYYY-MM-DD形式
 SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")    # YYYY-MM-DD形式
 
 USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
+RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
 
 REQUIRED_FIELDS = {
     DetectType.BUYBACK_COMPLETION: ["shares_acquired", "amount_spent_yen"],
@@ -78,12 +81,18 @@ def main():
             end_date = today.strftime("%Y-%m-%d")
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
         
-        df = get_tdnet_buyback_data(
-            engine=postgresql_engine,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        
+        if RERUN_URLS:
+            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
+            for url in RERUN_URLS:
+                delete_by_url(session, url)
+            df = get_tdnet_buyback_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
+        else:
+            df = get_tdnet_buyback_data(
+                engine=postgresql_engine,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
         logger.info(f"取得対象レコード数: {len(df)}件")
         
         for _, row in df.iterrows():

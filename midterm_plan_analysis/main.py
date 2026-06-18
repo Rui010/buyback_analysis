@@ -10,7 +10,10 @@ from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
 from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan  # init_db() に登録するためインポート
-from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data
+from midterm_plan_analysis.usecase.get_tdnet_midterm_data import (
+    get_tdnet_midterm_data,
+    get_tdnet_midterm_data_by_urls,
+)
 from midterm_plan_analysis.usecase.post_midterm_plan import post_midterm_plan
 from buyback_analysis.interface.notifier import notify_success, notify_error
 
@@ -22,6 +25,7 @@ SYSTEM_START_DATE = os.getenv("SYSTEM_START_DATE")
 SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")
 
 USE_NATIVE_PDF = os.getenv("MIDTERM_USE_NATIVE_PDF", "false").lower() == "true"
+RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
 
 logger = Logger()
 
@@ -53,11 +57,18 @@ def main():
             end_date = today.strftime("%Y-%m-%d")
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
 
-        df = get_tdnet_midterm_data(
-            engine=postgresql_engine,
-            start_date=start_date,
-            end_date=end_date,
-        )
+        if RERUN_URLS:
+            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
+            for url in RERUN_URLS:
+                session.query(MidtermPlan).filter(MidtermPlan.url == url).delete()
+            session.commit()
+            df = get_tdnet_midterm_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
+        else:
+            df = get_tdnet_midterm_data(
+                engine=postgresql_engine,
+                start_date=start_date,
+                end_date=end_date,
+            )
         logger.info(f"取得対象レコード数: {len(df)}件")
 
         for _, row in df.iterrows():
