@@ -15,6 +15,7 @@ from midterm_plan_analysis.usecase.get_tdnet_midterm_data import (
     get_tdnet_midterm_data_by_urls,
 )
 from midterm_plan_analysis.usecase.post_midterm_plan import post_midterm_plan
+from buyback_analysis.usecase.classify_midterm_by_llm import classify_midterm_by_llm
 from buyback_analysis.interface.notifier import notify_success, notify_error
 
 load_dotenv()
@@ -82,6 +83,9 @@ def main():
                 skipped_duplicates += 1
                 continue
 
+            title = row["title"]
+            name = row["name"]
+
             if USE_NATIVE_PDF:
                 pdf_path = get_pdf_path(
                     url=url,
@@ -90,15 +94,20 @@ def main():
                 )
                 if pdf_path is None:
                     logger.error(f"PDFの取得に失敗しました: {url}")
+                    post_midterm_plan(
+                        session=session, data={}, code=code, url=url,
+                        disclosure_date=disclosure_date, extraction_status="failed",
+                    )
                     failed_pdf += 1
                     continue
                 obj = parse_pdf_by_llm(
-                    title=row["title"],
+                    title=title,
                     pdf_path=pdf_path,
                     code=code,
-                    name=row["name"],
+                    name=name,
                     prompt_filename="midterm_plan_native.md",
                 )
+                content = None
             else:
                 content = get_pdf_data(
                     url=url,
@@ -107,19 +116,41 @@ def main():
                 )
                 if content is None:
                     logger.error(f"PDFの取得に失敗しました: {url}")
+                    post_midterm_plan(
+                        session=session, data={}, code=code, url=url,
+                        disclosure_date=disclosure_date, extraction_status="failed",
+                    )
                     failed_pdf += 1
                     continue
                 obj = parse_text_by_llm(
-                    title=row["title"],
+                    title=title,
                     content=content,
                     code=code,
-                    name=row["name"],
+                    name=name,
                     prompt_filename="midterm_plan.md",
                 )
+
             if obj is None:
                 logger.error(f"LLMによるパースに失敗しました: {url}")
+                post_midterm_plan(
+                    session=session, data={}, code=code, url=url,
+                    disclosure_date=disclosure_date, extraction_status="failed",
+                )
                 failed_parse += 1
                 continue
+
+            metrics = obj.get("data", {}).get("metrics")
+            has_metrics = bool(metrics) and any(
+                m.get("value") is not None for m in metrics
+            )
+
+            if has_metrics:
+                extraction_status = "ok"
+            else:
+                classify_content = content or ""
+                extraction_status = classify_midterm_by_llm(
+                    title=title, content=classify_content, code=code, name=name
+                )
 
             post_midterm_plan(
                 session=session,
@@ -127,8 +158,9 @@ def main():
                 code=code,
                 url=url,
                 disclosure_date=disclosure_date,
+                extraction_status=extraction_status,
             )
-            logger.info(f"保存完了: {code} - {row['title']}")
+            logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
             successful_saves += 1
 
         logger.info("=" * 60)

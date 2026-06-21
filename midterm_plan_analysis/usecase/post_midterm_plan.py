@@ -15,6 +15,7 @@ def post_midterm_plan(
     code: str,
     url: str,
     disclosure_date: str,
+    extraction_status: str,
 ) -> None:
     """
     中期経営計画データをSQLiteに保存する。
@@ -25,6 +26,7 @@ def post_midterm_plan(
         code: 証券コード（rowデータから渡す）
         url: ソースURL（rowデータから渡す）
         disclosure_date: 開示日（rowデータから渡す）
+        extraction_status: ok / failed / withdrawn / no_targets
     """
     if data is None:
         logger.error("dataがNoneです")
@@ -43,6 +45,7 @@ def post_midterm_plan(
         plan_end_year=inner.get("plan_end_year"),
         disclosure_date=disclosure_date,
         metrics=metrics_json,
+        extraction_status=extraction_status,
     )
 
     try:
