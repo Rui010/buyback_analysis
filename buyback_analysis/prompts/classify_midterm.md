@@ -12,9 +12,9 @@
 ### 出力形式
 
 ```json
-{
+{{
     "extraction_status": "withdrawn"
-}
+}}
 ```
 
 `extraction_status` には `"withdrawn"` か `"no_targets"` のいずれかのみを入れてください。
