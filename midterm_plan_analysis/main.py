@@ -182,6 +182,10 @@ def main():
         )
         notify_success("midterm_plan_analysis", summary)
 
+    except SystemExit as e:
+        logger.error(f"パイプラインが強制終了しました: {e}")
+        notify_error("midterm_plan_analysis", str(e))
+        raise
     except Exception as e:
         logger.error(f"パイプラインで予期しないエラーが発生しました: {e}")
         notify_error("midterm_plan_analysis", str(e))
