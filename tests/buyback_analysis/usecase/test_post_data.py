@@ -10,12 +10,11 @@ class TestPostDataValidation:
     """LLM出力のバリデーション追加テスト"""
 
     def test_post_data_with_missing_required_field(self):
-        """必須フィールド (code, disclosure_date) がNULLの場合はログで記録される"""
+        """必須フィールド (code, disclosure_date) がNULLの場合はValueErrorを送出してロールバックする"""
         session = MagicMock()
 
-        # disclosure_dateがNULL
         data = {
-            "type": "buyback_announcement",  # enum値を使用
+            "type": "buyback_announcement",
             "data": {
                 "code": "1234",
                 "disclosure_date": None,  # NULL
@@ -23,11 +22,9 @@ class TestPostDataValidation:
             },
         }
 
-        # ValueErrorが発生してcatchされるため、例外は発生しない
-        # ただし、logger.error()が呼ばれて、session.rollback()が呼ばれる
-        post_data(session, data)
+        with pytest.raises(ValueError, match="disclosure_date"):
+            post_data(session, data)
 
-        # ロールバックが呼ばれることを確認
         assert session.rollback.called
 
     def test_post_data_with_valid_data(self):

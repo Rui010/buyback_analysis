@@ -23,6 +23,7 @@
 | `failed` | PDF取得・LLM抽出の技術的失敗（再試行余地あり） | パイプライン（例外発生時） |
 | `withdrawn` | 取り下げ・修正通知で無効 | 分類プロンプト |
 | `no_targets` | 中計はあるが数値目標なし／別PDFリンクのみ | 分類プロンプト |
+| `postponed` | 公表延期お知らせ | 分類プロンプト |
 
 ### 訂正文書の扱い
 
@@ -81,6 +82,7 @@ metricsが空だった文書を分類するプロンプト。`withdrawn` / `no_t
 - 訂正通知で数値の記載なし     → "withdrawn"
 - 中計はあるが定量目標が非記載 → "no_targets"
 - 別PDFへのリンクのみ          → "no_targets"
+- 公表延期お知らせ             → "postponed"
 ```
 
 出力形式：
@@ -100,7 +102,7 @@ def classify_midterm_by_llm(
 ) -> str:
     """
     metricsが空だった文書を分類する。
-    Returns: "withdrawn" | "no_targets" | "failed"（LLMエラー時）
+    Returns: "withdrawn" | "no_targets" | "postponed" | "failed"（LLMエラー時）
     """
 ```
 

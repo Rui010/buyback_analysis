@@ -8,6 +8,7 @@
 |---|---|
 | `withdrawn` | 中期経営計画の取り下げ・廃止通知（既存データが無効になるもの） |
 | `no_targets` | 定量目標が記載されていないもの（訂正通知で数値なし・別PDFへのリンクのみを含む） |
+| `postponed` | 中期経営計画の公表延期お知らせ（計画そのものの開示を先送りする通知） |
 
 ### 出力形式
 
@@ -17,7 +18,7 @@
 }}
 ```
 
-`extraction_status` には `"withdrawn"` か `"no_targets"` のいずれかのみを入れてください。
+`extraction_status` には `"withdrawn"` / `"no_targets"` / `"postponed"` のいずれかのみを入れてください。
 
 ### 入力
 

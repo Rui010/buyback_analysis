@@ -30,6 +30,7 @@ class TestPostMidtermPlan:
             code="1234",
             url="https://example.com/plan.pdf",
             disclosure_date="2025-04-18",
+            extraction_status="ok",
         )
         assert session.add.called
         assert session.commit.called
@@ -45,6 +46,7 @@ class TestPostMidtermPlan:
             code="1234",
             url="https://example.com/plan.pdf",
             disclosure_date="2025-04-18",
+            extraction_status="ok",
         )
 
         instance = session.add.call_args[0][0]
@@ -60,6 +62,7 @@ class TestPostMidtermPlan:
             code="1234",
             url="https://example.com/plan.pdf",
             disclosure_date="2025-04-18",
+            extraction_status="failed",
         )
         assert not session.add.called
         assert not session.commit.called
@@ -75,6 +78,7 @@ class TestPostMidtermPlan:
             code="1234",
             url="https://example.com/plan.pdf",
             disclosure_date="2025-04-18",
+            extraction_status="ok",
         )
 
         session.rollback.assert_called()
@@ -90,6 +94,22 @@ class TestPostMidtermPlan:
             code="1234",
             url="https://example.com/plan.pdf",
             disclosure_date="2025-04-18",
+            extraction_status="ok",
         )
 
         session.rollback.assert_called()
+
+    @pytest.mark.parametrize("status", ["ok", "failed", "withdrawn", "no_targets", "postponed"])
+    def test_extraction_status_is_saved(self, status):
+        """extraction_statusがモデルに正しくセットされる"""
+        session = MagicMock()
+        post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status=status,
+        )
+        instance = session.add.call_args[0][0]
+        assert instance.extraction_status == status

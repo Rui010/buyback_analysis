@@ -106,6 +106,48 @@ midterm_plan_analysis/
 4. `buyback_analysis/prompts/midterm_plan.md` を使い**Gemini**でJSON抽出
 5. 抽出結果（計画名・開始/終了年度・定量目標一覧）を**SQLite**の`midterm_plans`テーブルに保存
 
+## テスト方針
+
+```bash
+# テスト実行（仮想環境をActivateしてから）
+pytest tests/ -v
+```
+
+### ディレクトリ構成
+
+```
+tests/
+├── buyback_analysis/
+│   ├── models/       # ORMモデルのカラム定義・主キーの確認
+│   └── usecase/      # ユースケース関数の単体テスト
+└── midterm_plan_analysis/
+    ├── models/
+    └── usecase/
+```
+
+### テストを書く対象・書かない対象
+
+**書く対象（ユニットテスト）**
+- `usecase/` 配下の関数: 外部依存（Gemini API・DB）は `unittest.mock` でモックする
+- `models/` 配下のORMモデル: カラム定義・型・主キーの確認
+- バリデーションロジック・分岐（正常系・異常系・境界値）
+
+**書かない対象**
+- `main.py` のパイプライン全体: PostgreSQL・Gemini API・ファイルシステムへの依存が多く、統合テストになるため対象外
+- `interface/` 配下のDB接続・ロガー: インフラ層のため対象外
+
+### モックの方針
+
+- Gemini API（`genai.Client`）は `unittest.mock.patch` でモックし、実APIは呼ばない
+- SQLAlchemyセッションは `MagicMock()` を渡す
+- 環境変数は `monkeypatch.setenv()` で設定する
+
+### 実装変更時のテスト更新ルール
+
+- モデルのカラム・型・主キーを変更したら `tests/*/models/` のテストを必ず更新する
+- `usecase/` に新しい関数を追加したら対応するテストファイルも作成する
+- 有効値の列挙（例: `extraction_status` の値セット）を変更したら、そのバリデーションのテストも更新する
+
 ## 重要な設計上の注意点
 
 - **2つのDB**が並行して使われる: 読み取り元はPostgreSQL（TDnetデータ）、書き込み先はSQLite（分析結果）

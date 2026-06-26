@@ -20,7 +20,7 @@ def classify_midterm_by_llm(
     metricsが空だった中計文書を分類する。
 
     Returns:
-        "withdrawn" | "no_targets" | "failed"（LLMエラー時）
+        "withdrawn" | "no_targets" | "postponed" | "failed"（LLMエラー時）
     """
     load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
@@ -48,7 +48,7 @@ def classify_midterm_by_llm(
             )
             result = json.loads(cleaned_text)
             status = result.get("extraction_status")
-            if status in {"withdrawn", "no_targets"}:
+            if status in {"withdrawn", "no_targets", "postponed"}:
                 return status
             logger.error(f"分類プロンプトが予期しない値を返しました: {status}")
             return "failed"

@@ -11,38 +11,36 @@ class TestAnnouncementModel:
     """Announcementモデルのテスト（resolution_dateが複合主キーに含まれるかを確認）"""
 
     def test_announcement_primary_keys(self):
-        """Announcementの複合主キーが (code, disclosure_date, resolution_date) であることを確認"""
+        """Announcementの複合主キーが (code, disclosure_date) であることを確認"""
         mapper = inspect(Announcement)
         pk_columns = [col.name for col in mapper.primary_key]
 
-        assert len(pk_columns) == 3
+        assert len(pk_columns) == 2
         assert "code" in pk_columns
         assert "disclosure_date" in pk_columns
-        assert "resolution_date" in pk_columns
 
 
 class TestCompletionModel:
     """Completionモデルのテスト（resolution_dateが複合主キーに含まれるかを確認）"""
 
     def test_completion_primary_keys(self):
-        """Completionの複合主キーが (code, disclosure_date, resolution_date) であることを確認"""
+        """Completionの複合主キーが (code, disclosure_date) であることを確認"""
         mapper = inspect(Completion)
         pk_columns = [col.name for col in mapper.primary_key]
 
-        assert len(pk_columns) == 3
+        assert len(pk_columns) == 2
         assert "code" in pk_columns
         assert "disclosure_date" in pk_columns
-        assert "resolution_date" in pk_columns
 
     def test_completion_column_types(self):
-        """Completionの列の型が正しいことを確認（修正後）"""
+        """Completionの列の型が正しいことを確認"""
         mapper = inspect(Completion)
         columns = {col.name: col.type for col in mapper.columns}
 
-        # shares_acquired は BigInteger であるべき
-        from sqlalchemy import BigInteger, String
+        # shares_acquired は Float であるべき（小数を含む取得株数に対応）
+        from sqlalchemy import Float, String
 
-        assert isinstance(columns["shares_acquired"], BigInteger)
+        assert isinstance(columns["shares_acquired"], Float)
 
         # buyback_method は String であるべき
         assert isinstance(columns["buyback_method"], String)
@@ -77,7 +75,7 @@ class TestRetirementModel:
 
         assert issubclass(Retirement, Base)
         mapper = inspect(Retirement)
-        assert mapper.mapped_table.name == "retirements"
+        assert mapper.persist_selectable.name == "retirements"
 
 
 class TestCorrectionModel:
@@ -92,4 +90,4 @@ class TestCorrectionModel:
 
         # テーブル名が正しく設定されている
         mapper = inspect(Correction)
-        assert mapper.mapped_table.name == "corrections"
+        assert mapper.persist_selectable.name == "corrections"

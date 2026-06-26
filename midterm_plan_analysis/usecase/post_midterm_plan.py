@@ -26,7 +26,7 @@ def post_midterm_plan(
         code: 証券コード（rowデータから渡す）
         url: ソースURL（rowデータから渡す）
         disclosure_date: 開示日（rowデータから渡す）
-        extraction_status: ok / failed / withdrawn / no_targets
+        extraction_status: ok / failed / withdrawn / no_targets / postponed
     """
     if data is None:
         logger.error("dataがNoneです")
