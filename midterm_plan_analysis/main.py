@@ -145,10 +145,13 @@ def main():
             )
 
             WITHDRAWN_KEYWORDS = ["取り下げ", "廃止", "撤回"]
+            POSTPONED_KEYWORDS = ["延期", "見送り"]
             if any(kw in title for kw in WITHDRAWN_KEYWORDS):
                 extraction_status = "withdrawn"
             elif has_metrics:
                 extraction_status = "ok"
+            elif any(kw in title for kw in POSTPONED_KEYWORDS):
+                extraction_status = "postponed"
             else:
                 classify_content = content or ""
                 extraction_status = classify_midterm_by_llm(

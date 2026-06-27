@@ -21,9 +21,9 @@
 |----|------|----------|
 | `ok` | metricsの抽出に成功 | パイプライン（metrics存在確認後） |
 | `failed` | PDF取得・LLM抽出の技術的失敗（再試行余地あり） | パイプライン（例外発生時） |
-| `withdrawn` | 取り下げ・修正通知で無効 | 分類プロンプト |
+| `withdrawn` | 取り下げ・修正通知で無効 | パイプライン（タイトルキーワード） |
 | `no_targets` | 中計はあるが数値目標なし／別PDFリンクのみ | 分類プロンプト |
-| `postponed` | 公表延期お知らせ | 分類プロンプト |
+| `postponed` | 公表延期お知らせ | パイプライン（タイトルキーワード）/ 分類プロンプト |
 
 ### 訂正文書の扱い
 
@@ -48,13 +48,19 @@ PostgreSQL → 対象IR一覧取得
     ├─ 抽出プロンプト（midterm_plan.md）でLLM呼び出し
     │       LLM失敗 → extraction_status = "failed" で INSERT → next
     │
-    ├─ metricsあり
+    ├─ タイトルに「取り下げ」「廃止」「撤回」を含む
+    │       → extraction_status = "withdrawn" で INSERT
+    │
+    ├─ metricsあり（value が null でない要素が1つ以上）
     │       → extraction_status = "ok" で INSERT
     │
-    └─ metricsなし（空リスト or null）
+    ├─ タイトルに「延期」「見送り」を含む
+    │       → extraction_status = "postponed" で INSERT
+    │
+    └─ 上記いずれにも該当しない（metricsなし・キーワードなし）
             ↓
             分類プロンプト（classify_midterm.md）でLLM呼び出し
-                → "withdrawn" または "no_targets" を返す
+                → "withdrawn" / "no_targets" / "postponed" のいずれかを返す
             → extraction_status = 分類結果 で INSERT
 ```
 
@@ -74,15 +80,16 @@ extraction_status = Column(String, nullable=True)  # ok / failed / withdrawn / n
 
 ### 2. `buyback_analysis/prompts/classify_midterm.md`（新規）
 
-metricsが空だった文書を分類するプロンプト。`withdrawn` / `no_targets` のいずれかを返す。
+metricsが空だった文書を分類するプロンプト。`withdrawn` / `no_targets` / `postponed` のいずれかを返す。  
+タイトルキーワードで `withdrawn` / `postponed` が確定しなかった場合にのみ呼ばれる。
 
 ```
 判定基準:
-- 取り下げ・廃止・無効化の通知 → "withdrawn"
-- 訂正通知で数値の記載なし     → "withdrawn"
-- 中計はあるが定量目標が非記載 → "no_targets"
-- 別PDFへのリンクのみ          → "no_targets"
-- 公表延期お知らせ             → "postponed"
+- 取り下げ・廃止・無効化の通知               → "withdrawn"
+- 策定に関するお知らせ・計画本体だが数値なし → "no_targets"
+- 訂正通知で数値なし                         → "no_targets"
+- 別PDFへのリンクのみ                        → "no_targets"
+- 「延期」「見送り」表現で計画内容がない     → "postponed"
 ```
 
 出力形式：
@@ -139,13 +146,22 @@ if obj is None:
     failed_parse += 1
     continue
 
-# metrics判定
+# タイトルキーワード・metrics でステータス確定、どれにも該当しない場合のみLLMで分類
+WITHDRAWN_KEYWORDS = ["取り下げ", "廃止", "撤回"]
+POSTPONED_KEYWORDS = ["延期", "見送り"]
 metrics = obj.get("data", {}).get("metrics")
-if metrics:
-    post_midterm_plan(..., data=obj, extraction_status="ok")
+has_metrics = bool(metrics) and any(m.get("value") is not None for m in metrics)
+
+if any(kw in title for kw in WITHDRAWN_KEYWORDS):
+    extraction_status = "withdrawn"
+elif has_metrics:
+    extraction_status = "ok"
+elif any(kw in title for kw in POSTPONED_KEYWORDS):
+    extraction_status = "postponed"
 else:
-    status = classify_midterm_by_llm(title, content, code, name)
-    post_midterm_plan(..., data=obj, extraction_status=status)
+    extraction_status = classify_midterm_by_llm(title, content or "", code, name)
+
+post_midterm_plan(..., data=obj, extraction_status=extraction_status)
 ```
 
 ---
