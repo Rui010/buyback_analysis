@@ -12,4 +12,4 @@ class MidtermPlan(Base):
     plan_end_year = Column(Integer, nullable=True)
     disclosure_date = Column(String, nullable=True)
     metrics = Column(Text, nullable=True)  # JSON文字列
-    extraction_status = Column(String, nullable=True)  # ok / failed / withdrawn / no_targets
+    extraction_status = Column(String, nullable=True)  # ok / failed / withdrawn / no_targets / postponed / skipped
