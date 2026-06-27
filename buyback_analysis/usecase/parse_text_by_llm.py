@@ -54,6 +54,7 @@ def parse_text_by_llm(
             response = client.models.generate_content(
                 model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=prompt,
+                config={"max_output_tokens": 16384},
             )
             time.sleep(1)  # レート制限対策のためのスリープ
             # Markdownコードブロック（```json ～ ```）を除去
@@ -82,8 +83,11 @@ def parse_text_by_llm(
                 )
 
         except json.JSONDecodeError as e:
-            logger.error(f"[JSON ERROR] パース失敗: {e}")
+            logger.error(f"[JSON ERROR] パース失敗 (attempt {attempt}/{max_retries}): {e}")
             logger.error(f"[RAW OUTPUT] {response.text}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+                continue
             return None
 
         except Exception as e:

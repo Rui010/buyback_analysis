@@ -65,6 +65,7 @@ def parse_pdf_by_llm(
             response = client.models.generate_content(
                 model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=[pdf_file, prompt],
+                config={"max_output_tokens": 16384},
             )
             time.sleep(1)
 
@@ -87,8 +88,11 @@ def parse_pdf_by_llm(
                 raise SystemExit("Gemini APIの制限に達したため、プログラムを終了します。")
 
         except json.JSONDecodeError as e:
-            logger.error(f"[JSON ERROR] パース失敗: {e}")
+            logger.error(f"[JSON ERROR] パース失敗 (attempt {attempt}/{max_retries}): {e}")
             logger.error(f"[RAW OUTPUT] {response.text}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+                continue
             return None
 
         except Exception as e:
