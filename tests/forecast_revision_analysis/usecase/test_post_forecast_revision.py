@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 from sqlalchemy.exc import IntegrityError
 
-from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, _calc_change_pct
+from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, _calc_change_pct, _to_float
 from forecast_revision_analysis.models.forecast_revision_detail import ForecastRevisionDetail
 from forecast_revision_analysis.models.forecast_revision_metric import ForecastRevisionMetric
 
@@ -32,6 +32,27 @@ def _make_data(periods=None, reason_raw="修正理由の原文", prev_forecast_d
             "spillover_conditions": ["光ケーブルメーカー"],
         },
     }
+
+
+class TestToFloat:
+
+    def test_int(self):
+        assert _to_float(500) == 500.0
+
+    def test_float(self):
+        assert _to_float(1.5) == 1.5
+
+    def test_string_int(self):
+        assert _to_float("500") == 500.0
+
+    def test_string_float(self):
+        assert _to_float("-47.72") == -47.72
+
+    def test_none(self):
+        assert _to_float(None) is None
+
+    def test_invalid_string(self):
+        assert _to_float("abc") is None
 
 
 class TestCalcChangePct:
@@ -70,9 +91,9 @@ class TestCalcChangePct:
 class TestPostForecastRevision:
 
     def test_normal_save(self):
-        """detail 1件 + metric 1件が保存される"""
+        """detail 1件 + metric 1件が保存され、Trueを返す"""
         session = MagicMock()
-        post_forecast_revision(
+        result = post_forecast_revision(
             session=session,
             data=_make_data(),
             code="5803",
@@ -80,6 +101,7 @@ class TestPostForecastRevision:
             disclosure_date="2026-06-18",
             extraction_status="ok",
         )
+        assert result is True
         assert session.add.call_count == 2  # detail + 1 metric
         assert session.flush.called
         assert session.commit.called
@@ -241,9 +263,9 @@ class TestPostForecastRevision:
         assert detail.reason_raw is None
 
     def test_none_data_does_not_save(self):
-        """data が None の場合は何も保存しない"""
+        """data が None の場合は何も保存せず False を返す"""
         session = MagicMock()
-        post_forecast_revision(
+        result = post_forecast_revision(
             session=session,
             data=None,
             code="5803",
@@ -251,15 +273,16 @@ class TestPostForecastRevision:
             disclosure_date="2026-06-18",
             extraction_status="failed",
         )
+        assert result is False
         assert not session.add.called
         assert not session.commit.called
 
-    def test_integrity_error_is_handled(self):
-        """主キー重複はロールバックしてスキップ"""
+    def test_integrity_error_returns_true(self):
+        """主キー重複はロールバックしてスキップ。Trueを返す（失敗ではなくスキップ）"""
         session = MagicMock()
         session.flush.side_effect = IntegrityError("Duplicate key", None, None)
 
-        post_forecast_revision(
+        result = post_forecast_revision(
             session=session,
             data=_make_data(),
             code="5803",
@@ -268,15 +291,16 @@ class TestPostForecastRevision:
             extraction_status="ok",
         )
 
+        assert result is True
         session.rollback.assert_called()
         assert not session.commit.called
 
-    def test_unexpected_error_is_handled(self):
-        """予期しないエラーはロールバックして続行"""
+    def test_unexpected_error_returns_false(self):
+        """予期しないエラーはロールバックしてFalseを返す"""
         session = MagicMock()
         session.commit.side_effect = Exception("unexpected")
 
-        post_forecast_revision(
+        result = post_forecast_revision(
             session=session,
             data=_make_data(),
             code="5803",
@@ -285,7 +309,88 @@ class TestPostForecastRevision:
             extraction_status="ok",
         )
 
+        assert result is False
         session.rollback.assert_called()
+
+    def test_is_modified_overridden_when_values_equal(self):
+        """prev_value == curr_value の場合、LLMのis_modifiedに関わらずコードが0に確定する"""
+        session = MagicMock()
+        periods = [
+            {
+                "period_type": "4q", "metric_name": "sales", "label_raw": "売上高",
+                "prev_value": 1000.0, "prev_value_upper": None,
+                "curr_value": 1000.0, "curr_value_upper": None,
+                "is_modified": 1,  # LLMが誤って1を返しても
+            }
+        ]
+        post_forecast_revision(
+            session=session,
+            data=_make_data(periods=periods),
+            code="5803", url="https://example.com/ir.pdf",
+            disclosure_date="2026-06-18", extraction_status="ok",
+        )
+        metric = session.add.call_args_list[1][0][0]
+        assert metric.is_modified == 0  # コードが0に上書きする
+
+    def test_is_modified_1_when_values_differ(self):
+        """prev_value != curr_value の場合は is_modified=1"""
+        session = MagicMock()
+        periods = [
+            {
+                "period_type": "4q", "metric_name": "sales", "label_raw": "売上高",
+                "prev_value": 1000.0, "prev_value_upper": None,
+                "curr_value": 1200.0, "curr_value_upper": None,
+                "is_modified": 0,
+            }
+        ]
+        post_forecast_revision(
+            session=session,
+            data=_make_data(periods=periods),
+            code="5803", url="https://example.com/ir.pdf",
+            disclosure_date="2026-06-18", extraction_status="ok",
+        )
+        metric = session.add.call_args_list[1][0][0]
+        assert metric.is_modified == 1
+
+    def test_is_modified_0_when_both_none(self):
+        """prev_value=None, curr_value=None は両値不明のため is_modified=0"""
+        session = MagicMock()
+        periods = [
+            {
+                "period_type": "4q", "metric_name": "eps", "label_raw": "EPS",
+                "prev_value": None, "prev_value_upper": None,
+                "curr_value": None, "curr_value_upper": None,
+                "is_modified": 0,
+            }
+        ]
+        post_forecast_revision(
+            session=session,
+            data=_make_data(periods=periods),
+            code="5803", url="https://example.com/ir.pdf",
+            disclosure_date="2026-06-18", extraction_status="ok",
+        )
+        metric = session.add.call_args_list[1][0][0]
+        assert metric.is_modified == 0
+
+    def test_is_modified_1_when_prev_none_curr_set(self):
+        """prev_value=None, curr_value に値がある場合は is_modified=1"""
+        session = MagicMock()
+        periods = [
+            {
+                "period_type": "2q", "metric_name": "dividend_per_share", "label_raw": "中間配当",
+                "prev_value": None, "prev_value_upper": None,
+                "curr_value": 0.0, "curr_value_upper": None,
+                "is_modified": 1,
+            }
+        ]
+        post_forecast_revision(
+            session=session,
+            data=_make_data(periods=periods),
+            code="5803", url="https://example.com/ir.pdf",
+            disclosure_date="2026-06-18", extraction_status="ok",
+        )
+        metric = session.add.call_args_list[1][0][0]
+        assert metric.is_modified == 1
 
     @pytest.mark.parametrize("status", ["ok", "no_periods", "failed", "withdrawn", "correction"])
     def test_extraction_status_values(self, status):

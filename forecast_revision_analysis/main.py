@@ -99,12 +99,16 @@ def main():
                 continue
 
             if any(kw in title for kw in WITHDRAWN_KEYWORDS):
-                post_forecast_revision(
+                saved = post_forecast_revision(
                     session=session, data={}, code=code, url=url,
                     disclosure_date=disclosure_date, extraction_status="withdrawn",
                 )
-                logger.info(f"保存完了 [withdrawn]: {code} - {title}")
-                successful_saves += 1
+                if saved:
+                    logger.info(f"保存完了 [withdrawn]: {code} - {title}")
+                    successful_saves += 1
+                else:
+                    logger.error(f"保存失敗 [withdrawn]: {code} - {title}")
+                    failed_parse += 1
                 continue
 
             if USE_NATIVE_PDF:
@@ -159,7 +163,7 @@ def main():
                 logger.error(f"LLMによるパースに失敗しました: {url}")
                 failed_parse += 1
 
-            post_forecast_revision(
+            saved = post_forecast_revision(
                 session=session,
                 data=obj or {},
                 code=code,
@@ -167,8 +171,12 @@ def main():
                 disclosure_date=disclosure_date,
                 extraction_status=extraction_status,
             )
-            logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
-            successful_saves += 1
+            if saved:
+                logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
+                successful_saves += 1
+            else:
+                logger.error(f"保存失敗: {code} - {title}")
+                failed_parse += 1
 
         logger.info("=" * 60)
         logger.info("【処理サマリー】")

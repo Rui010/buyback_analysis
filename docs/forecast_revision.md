@@ -207,15 +207,17 @@ def post_forecast_revision(
     session.add(detail)
 
     for period in inner.get("periods", []):
+        prev = period.get("prev_value")
+        curr = period.get("curr_value")
         metric = ForecastRevisionMetric(
             url=url,
             period_type=period.get("period_type"),
             metric_name=period.get("metric_name"),
             label_raw=period.get("label_raw"),
-            prev_value=period.get("prev_value"),
-            curr_value=period.get("curr_value"),
-            change_pct=period.get("change_pct"),
-            is_modified=period.get("is_modified"),
+            prev_value=prev,
+            curr_value=curr,
+            change_pct=_calc_change_pct(prev, curr),
+            is_modified=0 if prev == curr else 1,  # LLMに依存せずコードで確定
         )
         session.add(metric)
 
