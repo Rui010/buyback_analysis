@@ -58,19 +58,22 @@ class TestToFloat:
 class TestCalcChangePct:
 
     def test_normal(self):
-        assert _calc_change_pct(100.0, 150.0) == 50.0
+        assert _calc_change_pct(100.0, 150.0) == 40.0
 
     def test_decrease(self):
-        assert _calc_change_pct(200.0, 150.0) == -25.0
+        assert _calc_change_pct(200.0, 150.0) == -28.6
 
-    def test_zero_prev_returns_none(self):
-        assert _calc_change_pct(0.0, 100.0) is None
+    def test_zero_prev_returns_200(self):
+        assert _calc_change_pct(0.0, 100.0) == 200.0
 
-    def test_sign_crossing_positive_to_negative_returns_none(self):
-        assert _calc_change_pct(120.0, -145.0) is None
+    def test_both_zero_returns_zero(self):
+        assert _calc_change_pct(0.0, 0.0) == 0.0
 
-    def test_sign_crossing_negative_to_positive_returns_none(self):
-        assert _calc_change_pct(-100.0, 50.0) is None
+    def test_sign_crossing_positive_to_negative_returns_minus_200(self):
+        assert _calc_change_pct(120.0, -145.0) == -200.0
+
+    def test_sign_crossing_negative_to_positive_returns_200(self):
+        assert _calc_change_pct(-100.0, 50.0) == 200.0
 
     def test_both_none_returns_none(self):
         assert _calc_change_pct(None, None) is None
@@ -82,10 +85,10 @@ class TestCalcChangePct:
         assert _calc_change_pct(100.0, None) is None
 
     def test_both_negative_worsening(self):
-        assert _calc_change_pct(-100.0, -150.0) == -50.0
+        assert _calc_change_pct(-100.0, -150.0) == -40.0
 
-    def test_rounded_to_one_decimal(self):
-        assert _calc_change_pct(300.0, 394000.0) == 131233.3
+    def test_large_increase_bounded_near_200(self):
+        assert _calc_change_pct(300.0, 394000.0) == 199.7
 
 
 class TestPostForecastRevision:
@@ -177,7 +180,7 @@ class TestPostForecastRevision:
         assert metric.prev_value_upper is None
         assert metric.curr_value == 778000.0
         assert metric.curr_value_upper is None
-        assert metric.change_pct == 31.0  # (778000-594000)/594000*100 = 30.976... → 31.0
+        assert metric.change_pct == 26.8  # 2*(778000-594000)/(778000+594000)*100 = 26.8
         assert metric.is_modified == 1
 
     def test_range_forecast_metric_fields(self):

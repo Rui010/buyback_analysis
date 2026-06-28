@@ -23,14 +23,13 @@ def _to_float(v) -> float | None:
 
 
 def _calc_change_pct(prev: float | None, curr: float | None) -> float | None:
-    """増減率を計算する。ゼロクロス・ゼロ除算はnullを返す（日本の財務慣行に準拠）。"""
+    """対称変化率 2*(curr-prev)/(|prev|+|curr|)*100 を返す（-200%〜+200% に収まる）。"""
     if prev is None or curr is None:
         return None
-    if prev == 0:
-        return None
-    if (prev > 0 and curr < 0) or (prev < 0 and curr > 0):
-        return None
-    return round((curr - prev) / abs(prev) * 100, 1)
+    denom = abs(prev) + abs(curr)
+    if denom == 0:
+        return 0.0
+    return round(2 * (curr - prev) / denom * 100, 1)
 
 
 def post_forecast_revision(
