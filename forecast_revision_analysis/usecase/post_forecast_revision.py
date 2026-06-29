@@ -32,6 +32,37 @@ def _calc_change_pct(prev: float | None, curr: float | None) -> float | None:
     return round(2 * (curr - prev) / denom * 100, 1)
 
 
+_PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value"]
+
+
+def check_missing_fields(data: dict, code: str, url: str) -> bool:
+    """
+    extraction_status=ok のレコードに対して重要フィールドの欠損をチェックする。
+
+    欠損があれば [MISSING] プレフィックスでログに記録する。
+    Returns:
+        True: 欠損あり / False: 欠損なし
+    """
+    inner = data.get("data", {})
+    has_missing = False
+
+    if inner.get("prev_forecast_date") is None:
+        logger.info(f"[MISSING] field=prev_forecast_date code={code} url={url}")
+        has_missing = True
+
+    for i, period in enumerate(inner.get("periods", [])):
+        for field in _PERIOD_REQUIRED_FIELDS:
+            if period.get(field) is None:
+                logger.info(
+                    f"[MISSING] field=periods[{i}].{field}"
+                    f" period_type={period.get('period_type')}"
+                    f" code={code} url={url}"
+                )
+                has_missing = True
+
+    return has_missing
+
+
 def post_forecast_revision(
     session: Session,
     data: dict,

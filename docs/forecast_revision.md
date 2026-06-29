@@ -142,8 +142,12 @@ for _, row in df.iterrows():
     else:
         extraction_status = _determine_extraction_status(obj)
 
-    post_forecast_revision(session, obj or {}, code, url, disclosure_date, extraction_status)
+    saved = post_forecast_revision(session, obj or {}, code, url, disclosure_date, extraction_status)
+    if saved and extraction_status == "ok":
+        if check_missing_fields(obj or {}, code, url):  # [MISSING] ログ記録・件数カウント
+            missing_fields_count += 1
 
+# サマリー例: "総処理:30件 / 保存:28件 / 重複スキップ:0件 / PDF失敗:0件 / パース失敗:2件 / 欠損データ:3件"
 notify_success / notify_error("forecast_revision_analysis", summary)
 ```
 
@@ -182,6 +186,40 @@ def get_tdnet_forecast_revision_data_by_urls(engine, urls):
 
 `post_midterm_plan.py` と同一パターン。`data.get("data", {})` でLLM応答の内部オブジェクトを取り出す。
 
+#### check_missing_fields()
+
+`extraction_status=ok` のレコードに対して重要フィールドの欠損を検出する関数。欠損があれば `[MISSING] field=... code=... url=...` 形式でログに記録する（URL付きなので grep や ChatGPT への投げ込みが容易）。データは保存済みの状態で呼ぶため保存処理には影響しない。
+
+```python
+_PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value"]
+
+def check_missing_fields(data: dict, code: str, url: str) -> bool:
+    """欠損があれば [MISSING] ログを記録し True を返す。"""
+    inner = data.get("data", {})
+    has_missing = False
+    if inner.get("prev_forecast_date") is None:
+        logger.info(f"[MISSING] field=prev_forecast_date code={code} url={url}")
+        has_missing = True
+    for i, period in enumerate(inner.get("periods", [])):
+        for field in _PERIOD_REQUIRED_FIELDS:
+            if period.get(field) is None:
+                logger.info(f"[MISSING] field=periods[{i}].{field} period_type={period.get('period_type')} code={code} url={url}")
+                has_missing = True
+    return has_missing
+```
+
+欠損チェック対象フィールド:
+
+| レベル | フィールド | 欠損時の影響 |
+|---|---|---|
+| detail | `prev_forecast_date` | 前回予想の公表日が不明 |
+| period | `metric_name` | 指標の正規化名が不明・集計不能 |
+| period | `label_raw` | PDF原文との対応が取れない |
+| period | `prev_value` | 変化率計算不能 |
+| period | `curr_value` | 変化率計算不能 |
+
+#### post_forecast_revision()
+
 ```python
 def post_forecast_revision(
     session: Session,
@@ -190,7 +228,7 @@ def post_forecast_revision(
     url: str,
     disclosure_date: str,
     extraction_status: str,
-) -> None:
+) -> bool:
     inner = data.get("data", {})
 
     detail = ForecastRevisionDetail(
@@ -361,7 +399,7 @@ EBITDA → "ebitda"
 - `periods` には修正された期間・指標の全組み合わせを列挙してください。
 - 数値はPDFに記載されている数値をそのまま入れてください。単位ラベル（億円・百万円・円など）は含めないでください。
 - 予想をレンジで示している場合（例：「500〜600億円」）は、下限を `curr_value`、上限を `curr_value_upper` に入れてください。レンジでない場合は `prev_value_upper` / `curr_value_upper` は `null` にしてください。
-- `prev_forecast_date` は「○年○月○日に公表した」のような文言をPDF本文から探して YYYY-MM-DD 形式で入れてください。1文書に対して1つの日付です。記載がなければ `null` にしてください。
+- `prev_forecast_date` は「○年○月○日に公表した」「（○年○月○日発表）」「○年○月○日付」「○年○月○日開示」など前回予想を指す日付表現をすべて候補として探してください。PDFのテキスト抽出で「2026 年１月 14 日」のように文字間にスペースが入る場合でも日付として認識してください。本日の開示日と混同しないこと。令和表記は西暦に変換。記載がなければ `null` にしてください。
 - 不明な項目や記載されていないものは `null` を入れてください。
 - `direct_factors` / `structural_vulnerability` / `spillover_conditions` は簡潔な文字列のリストとして抽出してください。
 

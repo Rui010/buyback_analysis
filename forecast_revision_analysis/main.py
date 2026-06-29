@@ -16,7 +16,7 @@ from forecast_revision_analysis.usecase.get_tdnet_forecast_revision_data import 
     get_tdnet_forecast_revision_data,
     get_tdnet_forecast_revision_data_by_urls,
 )
-from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision
+from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields
 
 load_dotenv()
 
@@ -54,6 +54,7 @@ def main():
     skipped_duplicates = 0
     failed_pdf = 0
     failed_parse = 0
+    missing_fields_count = 0
 
     try:
         init_db()
@@ -174,6 +175,8 @@ def main():
             if saved:
                 logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
                 successful_saves += 1
+                if extraction_status == "ok" and check_missing_fields(obj or {}, code, url):
+                    missing_fields_count += 1
             else:
                 logger.error(f"保存失敗: {code} - {title}")
                 failed_parse += 1
@@ -185,12 +188,14 @@ def main():
         logger.info(f"  重複スキップ:    {skipped_duplicates}件")
         logger.info(f"  PDF取得失敗:     {failed_pdf}件")
         logger.info(f"  パース/判定失敗: {failed_parse}件")
+        logger.info(f"  欠損データ:      {missing_fields_count}件")
         logger.info("=" * 60)
 
         summary = (
             f"総処理:{total_processed}件 / 保存:{successful_saves}件 / "
             f"重複スキップ:{skipped_duplicates}件 / "
-            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件"
+            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
+            f"欠損データ:{missing_fields_count}件"
         )
         notify_success("forecast_revision_analysis", summary)
 

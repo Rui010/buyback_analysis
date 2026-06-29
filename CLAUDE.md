@@ -87,6 +87,21 @@ midterm_plan_analysis/
 
 `interface/`・`usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` は `buyback_analysis` のものを共用する。
 
+### forecast_revision_analysis（業績予想修正分析）
+
+```
+forecast_revision_analysis/
+├── main.py              # エントリーポイント・パイプライン制御
+├── models/
+│   ├── forecast_revision_detail.py   # forecast_revision_details テーブル（詳細）
+│   └── forecast_revision_metric.py   # forecast_revision_metrics テーブル（期間別指標）
+└── usecase/
+    ├── get_tdnet_forecast_revision_data.py  # PostgreSQLから「修正」「業績」含みタイトルを取得
+    └── post_forecast_revision.py            # SQLiteへの保存・欠損チェック
+```
+
+`buyback_analysis` の `interface/` および `usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` を共用する。
+
 ## データフロー
 
 ### buyback_analysis
@@ -97,6 +112,19 @@ midterm_plan_analysis/
 4. 対象外の`DetectType`（`OTHER`, `EQUITY_COMPENSATION`, `STRATEGIC_TRANSACTION`）はスキップ
 5. 対象の文書は種別に対応するプロンプトテンプレートを使い**Gemini**でJSON抽出
 6. 抽出結果を**SQLite**の対応テーブルに保存
+
+### forecast_revision_analysis
+
+1. **PostgreSQL**から`tdnet`テーブルのタイトルに「修正」「業績」両方を含むIR一覧を取得
+2. 各IRのPDFをダウンロードしてテキスト抽出（`FORECAST_REVISION_USE_NATIVE_PDF=true` でネイティブPDF方式）
+3. `forecast_revision_details` 主キー（`code` + `url`）で重複チェック → 処理済みならスキップ
+4. タイトルに「取り下げ」「廃止」「撤回」があれば `extraction_status=withdrawn` で即保存
+5. `buyback_analysis/prompts/forecast_revision.md` を使い**Gemini**でJSON抽出
+6. `is_modified=1` のperiodが1件以上あれば `ok`、なければ `no_periods`、失敗は `failed`
+7. 抽出結果を `forecast_revision_details`（詳細）・`forecast_revision_metrics`（期間別指標）に保存
+8. `extraction_status=ok` のレコードに限り `check_missing_fields()` で欠損チェックを実施
+9. 欠損があればログに `[MISSING] field=... code=... url=...` 形式で記録（URL付きでgrepしやすくする）
+10. 完了通知のサマリーに「欠損データ: X件」として件数を含める
 
 ### midterm_plan_analysis
 
@@ -159,3 +187,4 @@ tests/
 - `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`logger`・`notifier`・`get_pdf_data`・`parse_text_by_llm`）を共用する
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
 - `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う
+- `forecast_revision_analysis` の欠損チェック対象フィールド: detail レベルは `prev_forecast_date`、period レベルは `metric_name`・`label_raw`・`prev_value`・`curr_value`。これらが null だとデータとして意味をなさない。`check_missing_fields()` は `extraction_status=ok` のレコードにのみ適用し、欠損があっても保存は行う（欠損件数を完了通知のサマリーに含める）
