@@ -455,7 +455,6 @@ EBITDA → "ebitda"
         "curr_value": 174000,
         "curr_value_upper": null,
         "prev_year_actual": 71000,
-        "prev_year_actual_upper": null,
         "is_modified": 1
       },
       {
@@ -467,7 +466,6 @@ EBITDA → "ebitda"
         "curr_value": 1462000,
         "curr_value_upper": null,
         "prev_year_actual": 1009000,
-        "prev_year_actual_upper": null,
         "is_modified": 1
       },
       {
@@ -479,7 +477,6 @@ EBITDA → "ebitda"
         "curr_value": 310000,
         "curr_value_upper": null,
         "prev_year_actual": 148000,
-        "prev_year_actual_upper": null,
         "is_modified": 1
       }
     ],
