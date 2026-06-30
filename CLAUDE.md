@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 方針
+
+- テストファースト
+- 設計はドキュメントに残す
+- カバレッジを計算して
+
 ## 実行コマンド
 
 ```bash

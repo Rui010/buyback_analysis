@@ -23,6 +23,7 @@ def _make_data(periods=None, reason_raw="修正理由の原文", prev_forecast_d
                     "prev_value_upper": None,
                     "curr_value": 778000.0,
                     "curr_value_upper": None,
+                    "prev_year_actual": 489000.0,
                     "is_modified": 1,
                 }
             ],
@@ -180,6 +181,7 @@ class TestPostForecastRevision:
         assert metric.prev_value_upper is None
         assert metric.curr_value == 778000.0
         assert metric.curr_value_upper is None
+        assert metric.prev_year_actual == 489000.0
         assert metric.change_pct == 26.8  # 2*(778000-594000)/(778000+594000)*100 = 26.8
         assert metric.is_modified == 1
 

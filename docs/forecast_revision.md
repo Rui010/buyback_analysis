@@ -1,6 +1,6 @@
 # buyback_analysis 追加設計書 - 業績予想修正トラッカー対応
 
-version 2.0　2026-06-25
+version 2.1　2026-06-29
 
 ---
 
@@ -253,7 +253,10 @@ def post_forecast_revision(
             metric_name=period.get("metric_name"),
             label_raw=period.get("label_raw"),
             prev_value=prev,
+            prev_value_upper=_to_float(period.get("prev_value_upper")),
             curr_value=curr,
+            curr_value_upper=_to_float(period.get("curr_value_upper")),
+            prev_year_actual=_to_float(period.get("prev_year_actual")),
             change_pct=_calc_change_pct(prev, curr),
             is_modified=0 if prev == curr else 1,  # LLMに依存せずコードで確定
         )
@@ -303,12 +306,13 @@ class ForecastRevisionMetric(Base):
     period_type        = Column(String, nullable=False)  # '1q'/'2q'/'3q'/'4q'（4q=通期）
     metric_name        = Column(String, nullable=False)  # 正規化指標名（§8参照）
     label_raw          = Column(String)                  # PDF原文ラベル
-    prev_value       = Column(Float)  # 前回予想値（レンジの場合は下限）
-    prev_value_upper = Column(Float)  # 前回予想値の上限（レンジでない場合はnull）
-    curr_value       = Column(Float)  # 今回修正予想値（レンジの場合は下限）
-    curr_value_upper = Column(Float)  # 今回修正予想値の上限（レンジでない場合はnull）
-    change_pct       = Column(Float)   # post_forecast_revision() でコード計算（LLM非依存）
-    is_modified      = Column(Integer) # 0=据え置き / 1=修正あり
+    prev_value             = Column(Float)   # 前回予想値（レンジの場合は下限）
+    prev_value_upper       = Column(Float)   # 前回予想値の上限（レンジでない場合はnull）
+    curr_value             = Column(Float)   # 今回修正予想値（レンジの場合は下限）
+    curr_value_upper       = Column(Float)   # 今回修正予想値の上限（レンジでない場合はnull）
+    prev_year_actual       = Column(Float)   # 前年同期実績値（表に「前年同期実績」列があれば。なければnull）
+    change_pct             = Column(Float)   # post_forecast_revision() でコード計算（LLM非依存）
+    is_modified            = Column(Integer) # 0=据え置き / 1=修正あり
 ```
 
 ### 重複チェック
@@ -373,6 +377,7 @@ from forecast_revision_analysis.models.forecast_revision_metric import ForecastR
                 "prev_value_upper": "前回予想値の上限（レンジでない場合はnull）",
                 "curr_value": "今回修正予想値（レンジの場合は下限・数値のみ・単位なし）",
                 "curr_value_upper": "今回修正予想値の上限（レンジでない場合はnull）",
+                "prev_year_actual": "前年同期実績値（表に「前年同期実績」列があれば。数値のみ・単位なし。列がなければnull）",
                 "is_modified": "修正あり=1、据え置き=0"
             }}
         ],
@@ -400,6 +405,7 @@ EBITDA → "ebitda"
 - 数値はPDFに記載されている数値をそのまま入れてください。単位ラベル（億円・百万円・円など）は含めないでください。
 - 予想をレンジで示している場合（例：「500〜600億円」）は、下限を `curr_value`、上限を `curr_value_upper` に入れてください。レンジでない場合は `prev_value_upper` / `curr_value_upper` は `null` にしてください。
 - `prev_forecast_date` は「○年○月○日に公表した」「（○年○月○日発表）」「○年○月○日付」「○年○月○日開示」など前回予想を指す日付表現をすべて候補として探してください。PDFのテキスト抽出で「2026 年１月 14 日」のように文字間にスペースが入る場合でも日付として認識してください。本日の開示日と混同しないこと。令和表記は西暦に変換。記載がなければ `null` にしてください。
+- `prev_year_actual` は表の「前年同期実績」列から取得してください。列が存在しない場合は `null` にしてください。数値のみ・単位なしで、EPSや配当を含む全指標で取得してください。
 - 不明な項目や記載されていないものは `null` を入れてください。
 - `direct_factors` / `structural_vulnerability` / `spillover_conditions` は簡潔な文字列のリストとして抽出してください。
 
@@ -437,6 +443,7 @@ EBITDA → "ebitda"
         "prev_value_upper": null,
         "curr_value": 778000,
         "curr_value_upper": null,
+        "prev_year_actual": 489000,
         "is_modified": 1
       },
       {
@@ -447,6 +454,8 @@ EBITDA → "ebitda"
         "prev_value_upper": null,
         "curr_value": 174000,
         "curr_value_upper": null,
+        "prev_year_actual": 71000,
+        "prev_year_actual_upper": null,
         "is_modified": 1
       },
       {
@@ -457,6 +466,8 @@ EBITDA → "ebitda"
         "prev_value_upper": null,
         "curr_value": 1462000,
         "curr_value_upper": null,
+        "prev_year_actual": 1009000,
+        "prev_year_actual_upper": null,
         "is_modified": 1
       },
       {
@@ -467,6 +478,8 @@ EBITDA → "ebitda"
         "prev_value_upper": null,
         "curr_value": 310000,
         "curr_value_upper": null,
+        "prev_year_actual": 148000,
+        "prev_year_actual_upper": null,
         "is_modified": 1
       }
     ],

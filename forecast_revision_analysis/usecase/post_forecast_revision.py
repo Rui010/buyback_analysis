@@ -123,6 +123,7 @@ def post_forecast_revision(
                 prev_value_upper=_to_float(period.get("prev_value_upper")),
                 curr_value=curr,
                 curr_value_upper=_to_float(period.get("curr_value_upper")),
+                prev_year_actual=_to_float(period.get("prev_year_actual")),
                 change_pct=_calc_change_pct(prev, curr),
                 is_modified=is_modified,
             )

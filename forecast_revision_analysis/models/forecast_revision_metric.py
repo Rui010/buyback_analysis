@@ -14,5 +14,6 @@ class ForecastRevisionMetric(Base):
     prev_value_upper = Column(Float)
     curr_value = Column(Float)
     curr_value_upper = Column(Float)
+    prev_year_actual = Column(Float)          # 前年同期実績値（表に「前年同期実績」列があれば。なければnull）
     change_pct = Column(Float)
     is_modified = Column(Integer)                # 0=据え置き / 1=修正あり

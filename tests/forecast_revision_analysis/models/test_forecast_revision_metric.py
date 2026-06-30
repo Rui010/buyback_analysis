@@ -20,6 +20,7 @@ class TestForecastRevisionMetric:
             prev_value_upper=None,
             curr_value=778000.0,
             curr_value_upper=None,
+            prev_year_actual=489000.0,
             change_pct=31.0,
             is_modified=1,
         )
@@ -28,6 +29,7 @@ class TestForecastRevisionMetric:
         assert metric.metric_name == "sales"
         assert metric.prev_value_upper is None
         assert metric.curr_value_upper is None
+        assert metric.prev_year_actual == 489000.0
         assert metric.is_modified == 1
 
     def test_range_forecast(self):
@@ -58,5 +60,6 @@ class TestForecastRevisionMetric:
         assert metric.prev_value_upper is None
         assert metric.curr_value is None
         assert metric.curr_value_upper is None
+        assert metric.prev_year_actual is None
         assert metric.change_pct is None
         assert metric.is_modified is None
