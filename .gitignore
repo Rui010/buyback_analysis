@@ -21,6 +21,10 @@ data/
 *.sqlite3
 *.db
 
+# カバレッジ計測結果
+.coverage
+htmlcov/
+
 # ログディレクトリ
 logs/
 

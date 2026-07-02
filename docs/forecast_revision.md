@@ -2,6 +2,8 @@
 
 version 2.2　2026-07-02
 
+> **注記（2026-07-02）**: LLM抽出部分（§8）はStage1（抽出・responseSchemaで型固定）/Stage2（推論）の2段階構成に再設計・実装済み。設計の詳細・変更理由は [docs/forecast_revision_llm_pipeline_redesign.md](./forecast_revision_llm_pipeline_redesign.md) を参照。本ドキュメントの§8はテキスト方式単一コール時代の記述のまま残しており、最新の実装とは一致しない箇所がある。
+
 ---
 
 ## 1. 概要

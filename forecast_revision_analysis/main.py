@@ -6,8 +6,6 @@ from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.get_pdf_path import get_pdf_path
-from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
-from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.interface.notifier import notify_success, notify_error
 from forecast_revision_analysis.models.forecast_revision_detail import ForecastRevisionDetail  # noqa: F401 init_db() に登録するためインポート
@@ -16,7 +14,12 @@ from forecast_revision_analysis.usecase.get_tdnet_forecast_revision_data import 
     get_tdnet_forecast_revision_data,
     get_tdnet_forecast_revision_data_by_urls,
 )
-from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields
+from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _to_float
+from forecast_revision_analysis.usecase.extract_forecast_revision_stage1 import extract_forecast_revision_stage1
+from forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native import extract_forecast_revision_stage1_native
+from forecast_revision_analysis.usecase.build_stage2_context import build_stage2_context
+from forecast_revision_analysis.usecase.infer_forecast_revision_stage2 import infer_forecast_revision_stage2
+from forecast_revision_analysis.usecase.merge_stage_results import merge_stage_results
 
 load_dotenv()
 
@@ -41,9 +44,28 @@ def _determine_extraction_status(obj: dict | None) -> str:
     if obj is None:
         return "failed"
     periods = obj.get("data", {}).get("periods", [])
-    if any(p.get("is_modified") == 1 for p in periods):
+    if any(_to_float(p.get("prev_value")) != _to_float(p.get("curr_value")) for p in periods):
         return "ok"
     return "no_periods"
+
+
+def _run_stage1_and_stage2(title: str, content: str | None, pdf_path: str | None, code: str, name: str) -> dict | None:
+    """Stage1（抽出）を実行し、成功すればStage2（推論）を実行してマージした結果を返す。
+
+    Stage1が失敗した場合はNoneを返す。Stage2が失敗した場合でもStage1のデータは失わない
+    （direct_factors等はNoneのまま保存する。詳細はdocs/forecast_revision_llm_pipeline_redesign.md §5）。
+    """
+    if pdf_path is not None:
+        stage1_obj = extract_forecast_revision_stage1_native(title=title, pdf_path=pdf_path, code=code, name=name)
+    else:
+        stage1_obj = extract_forecast_revision_stage1(title=title, content=content, code=code, name=name)
+
+    if stage1_obj is None:
+        return None
+
+    stage2_context = build_stage2_context(stage1_obj, title=title, code=code, name=name)
+    stage2_obj = infer_forecast_revision_stage2(stage2_context)
+    return merge_stage_results(stage1_obj, stage2_obj)
 
 
 def main():
@@ -126,13 +148,7 @@ def main():
                     )
                     failed_pdf += 1
                     continue
-                obj = parse_pdf_by_llm(
-                    title=title,
-                    pdf_path=pdf_path,
-                    code=code,
-                    name=name,
-                    prompt_filename="forecast_revision_native.md",
-                )
+                obj = _run_stage1_and_stage2(title=title, content=None, pdf_path=pdf_path, code=code, name=name)
             else:
                 content = get_pdf_data(
                     url=url,
@@ -147,13 +163,7 @@ def main():
                     )
                     failed_pdf += 1
                     continue
-                obj = parse_text_by_llm(
-                    title=title,
-                    content=content,
-                    code=code,
-                    name=name,
-                    prompt_filename="forecast_revision.md",
-                )
+                obj = _run_stage1_and_stage2(title=title, content=content, pdf_path=None, code=code, name=name)
 
             if any(kw in title for kw in CORRECTION_KEYWORDS):
                 extraction_status = "correction"

@@ -102,11 +102,17 @@ forecast_revision_analysis/
 │   ├── forecast_revision_detail.py   # forecast_revision_details テーブル（詳細）
 │   └── forecast_revision_metric.py   # forecast_revision_metrics テーブル（期間別指標）
 └── usecase/
-    ├── get_tdnet_forecast_revision_data.py  # PostgreSQLから「修正」「業績」含みタイトルを取得
-    └── post_forecast_revision.py            # SQLiteへの保存・欠損チェック
+    ├── get_tdnet_forecast_revision_data.py       # PostgreSQLから「修正」「業績」含みタイトルを取得
+    ├── schemas.py                                # Stage1/Stage2のresponseSchema（Pydantic）
+    ├── extract_forecast_revision_stage1.py        # Stage1抽出（テキスト方式）
+    ├── extract_forecast_revision_stage1_native.py # Stage1抽出（ネイティブPDF方式）
+    ├── build_stage2_context.py                    # Stage1結果からStage2用の要約テキストを整形
+    ├── infer_forecast_revision_stage2.py           # Stage2推論（PDF本文は再送しない）
+    ├── merge_stage_results.py                      # Stage1/Stage2結果をpost_forecast_revision()の入力shapeにマージ
+    └── post_forecast_revision.py                   # SQLiteへの保存・欠損チェック
 ```
 
-`buyback_analysis` の `interface/` および `usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` を共用する。
+`buyback_analysis` の `interface/` および `usecase/get_pdf_data.py` を共用する。LLM抽出はStage1/Stage2に分離しており、汎用の `parse_text_by_llm`/`parse_pdf_by_llm`（buyback_analysis/midterm_plan_analysisが使用）とは別に、forecast_revision_analysis固有のPydanticスキーマ付き抽出関数を持つ（詳細は `docs/forecast_revision_llm_pipeline_redesign.md`）。
 
 ## データフロー
 
@@ -125,12 +131,14 @@ forecast_revision_analysis/
 2. 各IRのPDFをダウンロードしてテキスト抽出（`FORECAST_REVISION_USE_NATIVE_PDF=true` でネイティブPDF方式）
 3. `forecast_revision_details` 主キー（`code` + `url`）で重複チェック → 処理済みならスキップ
 4. タイトルに「取り下げ」「廃止」「撤回」があれば `extraction_status=withdrawn` で即保存
-5. `buyback_analysis/prompts/forecast_revision.md` を使い**Gemini**でJSON抽出
-6. `is_modified=1` のperiodが1件以上あれば `ok`、なければ `no_periods`、失敗は `failed`
-7. 抽出結果を `forecast_revision_details`（詳細）・`forecast_revision_metrics`（期間別指標）に保存
-8. `extraction_status=ok` のレコードに限り `check_missing_fields()` で欠損チェックを実施
-9. 欠損があればログに `[MISSING] field=... code=... url=...` 形式で記録（URL付きでgrepしやすくする）
-10. 完了通知のサマリーに「欠損データ: X件」として件数を含める
+5. **Stage1**: `buyback_analysis/prompts/forecast_revision_stage1.md`（ネイティブPDF方式は`forecast_revision_stage1_native.md`）を使い**Gemini**で抽出系フィールド（`periods`/`prev_forecast_date`/`value_unit`/`reason_raw`）を`responseSchema`（`Stage1Extraction`）で型固定して抽出
+6. **Stage2**: Stage1結果から`build_stage2_context()`で機械整形した要約テキスト（PDF本文は含まない）をもとに、`buyback_analysis/prompts/forecast_revision_stage2.md`を使い**Gemini**で推論系フィールド（`direct_factors`/`structural_vulnerability`/`spillover_conditions`）を`responseSchema`（`Stage2Inference`）で抽出。Stage1が失敗した場合はStage2を実行しない
+7. `merge_stage_results()`でStage1/Stage2の結果をマージ（Stage2失敗時は推論系フィールドを`None`のまま、Stage1のデータは保存する）
+8. マージ結果の`periods`について、`prev_value != curr_value` の期間が1件以上あれば `ok`、なければ `no_periods`、Stage1失敗は `failed`（`is_modified`はLLMに問い合わせず`prev_value`/`curr_value`の比較でコード側が確定する）
+9. 抽出結果を `forecast_revision_details`（詳細）・`forecast_revision_metrics`（期間別指標）に保存
+10. `extraction_status=ok` のレコードに限り `check_missing_fields()` で欠損チェックを実施
+11. 欠損があればログに `[MISSING] field=... code=... url=...` 形式で記録（URL付きでgrepしやすくする）
+12. 完了通知のサマリーに「欠損データ: X件」として件数を含める
 
 ### midterm_plan_analysis
 
@@ -194,4 +202,5 @@ tests/
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
 - `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う
 - `forecast_revision_analysis` の欠損チェック対象フィールド: detail レベルは `prev_forecast_date`、period レベルは `metric_name`・`label_raw`・`prev_value`・`curr_value`・`fiscal_year`・`consolidation_type`。これらが null だとデータとして意味をなさない。`check_missing_fields()` は `extraction_status=ok` のレコードにのみ適用し、欠損があっても保存は行う（欠損件数を完了通知のサマリーに含める）
+- `forecast_revision_analysis` のLLM抽出はStage1（抽出・`responseSchema`で型固定・`temperature=0`）とStage2（推論・PDF本文は再送せずStage1の要約のみを入力・`temperature=0.2`）に分離している。`is_modified`はStage1のresponseSchemaに含めず、`prev_value`/`curr_value`の比較でコード側（`post_forecast_revision.py`・`main.py`の`_determine_extraction_status()`）が確定する。設計背景は `docs/forecast_revision_llm_pipeline_redesign.md` を参照
 - `forecast_revision_metrics` の自然キーは `(url, period_type, fiscal_year, consolidation_type, metric_name)` の複合ユニーク制約で担保する。`fiscal_year`（対象決算期の西暦年）・`consolidation_type`（`consolidated`=連結 / `non_consolidated`=単体・個別）がないと、同一期間・同一指標名で連結/単体や決算年度違いの行を区別できず重複を検出できない設計上の欠陥があったため追加した（詳細は `docs/forecast_revision.md` §7参照）
