@@ -70,24 +70,6 @@ class TestBuildStage2Context:
         context = build_stage2_context(_stage1_obj(periods=[]), title="t", code="5803", name="n")
         assert "（修正された指標なし）" in context
 
-    def test_net_income_total_uses_dedicated_label(self):
-        """net_income_total（IFRS非支配持分含む合計）はnet_incomeと別のラベルで表示される"""
-        periods = [
-            {
-                "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
-                "metric_name": "net_income_total", "label_raw": "当期利益",
-                "prev_value": 548000.0, "curr_value": 470000.0,
-            },
-            {
-                "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
-                "metric_name": "net_income", "label_raw": "親会社の所有者に帰属する当期利益",
-                "prev_value": 497000.0, "curr_value": 420000.0,
-            },
-        ]
-        context = build_stage2_context(_stage1_obj(periods=periods), title="t", code="6902", name="n")
-        assert "当期利益（非支配持分含む合計）" in context
-        assert "当期純利益（親会社帰属分）" in context
-
     def test_unknown_metric_name_falls_back_to_label_raw(self):
         periods = [
             {

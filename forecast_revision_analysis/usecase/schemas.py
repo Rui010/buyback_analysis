@@ -21,7 +21,6 @@ class MetricName(str, Enum):
     BUSSINESS_INCOME = "bussiness_income"  # 既存のDBカラム値（typo）に合わせて踏襲
     ORDINARY_INCOME = "ordinary_income"
     NET_INCOME = "net_income"  # 親会社の所有者（株主）に帰属する当期純利益
-    NET_INCOME_TOTAL = "net_income_total"  # IFRS「当期利益」（非支配持分を含む合計）。net_incomeとは別建て
     EBITDA = "ebitda"
     EPS = "eps"
     DIVIDEND_PER_SHARE = "dividend_per_share"

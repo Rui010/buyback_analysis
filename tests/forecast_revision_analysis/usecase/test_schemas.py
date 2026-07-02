@@ -44,13 +44,6 @@ class TestPeriodExtraction:
         with pytest.raises(ValidationError):
             PeriodExtraction(period_type="4q", metric_name="unknown_metric", label_raw="売上高")
 
-    def test_net_income_total_metric_name_accepted(self):
-        """IFRS「当期利益」（非支配持分を含む合計）をnet_incomeと別建てで受け付ける"""
-        period = PeriodExtraction(
-            period_type="4q", metric_name="net_income_total", label_raw="当期利益"
-        )
-        assert period.metric_name == "net_income_total"
-
     def test_invalid_consolidation_type_rejected(self):
         with pytest.raises(ValidationError):
             PeriodExtraction(
