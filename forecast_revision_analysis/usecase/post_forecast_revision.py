@@ -45,6 +45,41 @@ def _calc_change_pct(prev: float | None, curr: float | None) -> float | None:
 _PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value", "fiscal_year", "consolidation_type"]
 
 
+def _period_natural_key(period: dict) -> tuple:
+    return (
+        period.get("period_type"),
+        period.get("fiscal_year"),
+        period.get("consolidation_type"),
+        period.get("metric_name"),
+    )
+
+
+def _deduplicate_periods(periods: list, code: str, url: str) -> list:
+    """
+    forecast_revision_metricsの自然キー（period_type, fiscal_year, consolidation_type,
+    metric_name）で重複するperiodを除去する。
+
+    LLMがmetric_nameの正規化などにより同じ自然キーの行を複数返すことがあり（例: IFRS企業の
+    「当期利益」と「親会社の所有者に帰属する当期利益」が両方net_incomeに丸められる等）、
+    そのままINSERTすると自然キーのUNIQUE制約違反でトランザクション全体がロールバックされ、
+    該当レコードが1件も保存されなくなってしまう。保存前にコード側で確実に排除することで、
+    プロンプトの指示にLLMが従わなかった場合でも保存自体は失敗させない。先に出現した方を採用する。
+    """
+    seen = set()
+    result = []
+    for period in periods:
+        key = _period_natural_key(period)
+        if key in seen:
+            logger.info(
+                f"[DUPLICATE] 自然キー重複のためperiodを除外しました: key={key}"
+                f" label_raw={period.get('label_raw')} code={code} url={url}"
+            )
+            continue
+        seen.add(key)
+        result.append(period)
+    return result
+
+
 def check_missing_fields(data: dict, code: str, url: str) -> bool:
     """
     extraction_status=ok のレコードに対して重要フィールドの欠損をチェックする。
@@ -120,7 +155,7 @@ def post_forecast_revision(
         session.add(detail)
         session.flush()
 
-        for period in inner.get("periods", []):
+        for period in _deduplicate_periods(inner.get("periods", []), code, url):
             prev = _to_float(period.get("prev_value"))
             curr = _to_float(period.get("curr_value"))
             is_modified = 0 if prev == curr else 1

@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 from sqlalchemy.exc import IntegrityError
 
-from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _calc_change_pct, _to_float, _to_int
+from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _calc_change_pct, _to_float, _to_int, _deduplicate_periods
 from forecast_revision_analysis.models.forecast_revision_detail import ForecastRevisionDetail
 from forecast_revision_analysis.models.forecast_revision_metric import ForecastRevisionMetric
 
@@ -107,6 +107,49 @@ class TestCalcChangePct:
 
     def test_large_increase_bounded_near_200(self):
         assert _calc_change_pct(300.0, 394000.0) == 199.7
+
+
+class TestDeduplicatePeriods:
+
+    def test_no_duplicates_returns_all(self):
+        periods = [
+            {"period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated", "metric_name": "sales"},
+            {"period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated", "metric_name": "net_income"},
+        ]
+        result = _deduplicate_periods(periods, "5803", "https://example.com/ir.pdf")
+        assert len(result) == 2
+
+    def test_duplicate_natural_key_keeps_first_occurrence(self):
+        first = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "当期利益", "curr_value": 470000.0,
+        }
+        second = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "親会社の所有者に帰属する当期利益", "curr_value": 420000.0,
+        }
+        result = _deduplicate_periods([first, second], "6902", "https://example.com/ir.pdf")
+        assert len(result) == 1
+        assert result[0]["label_raw"] == "当期利益"
+
+    def test_different_metric_name_not_deduplicated(self):
+        periods = [
+            {"period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated", "metric_name": "net_income"},
+            {"period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated", "metric_name": "sales"},
+        ]
+        result = _deduplicate_periods(periods, "5803", "https://example.com/ir.pdf")
+        assert len(result) == 2
+
+    def test_different_consolidation_type_not_deduplicated(self):
+        periods = [
+            {"period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated", "metric_name": "sales"},
+            {"period_type": "4q", "fiscal_year": 2026, "consolidation_type": "non_consolidated", "metric_name": "sales"},
+        ]
+        result = _deduplicate_periods(periods, "5803", "https://example.com/ir.pdf")
+        assert len(result) == 2
+
+    def test_empty_list_returns_empty(self):
+        assert _deduplicate_periods([], "5803", "https://example.com/ir.pdf") == []
 
 
 class TestPostForecastRevision:
@@ -254,6 +297,38 @@ class TestPostForecastRevision:
             extraction_status="ok",
         )
         assert session.add.call_count == 3  # detail + 2 metrics
+
+    def test_duplicate_natural_key_periods_saved_without_crash(self):
+        """periodsに自然キー重複があってもクラッシュせず1件だけ保存される（IntegrityError回避）"""
+        session = MagicMock()
+        periods = [
+            {
+                "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+                "metric_name": "net_income", "label_raw": "当期利益",
+                "prev_value": 548000.0, "prev_value_upper": None,
+                "curr_value": 470000.0, "curr_value_upper": None,
+            },
+            {
+                "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+                "metric_name": "net_income", "label_raw": "親会社の所有者に帰属する当期利益",
+                "prev_value": 497000.0, "prev_value_upper": None,
+                "curr_value": 420000.0, "curr_value_upper": None,
+            },
+        ]
+        result = post_forecast_revision(
+            session=session,
+            data=_make_data(periods=periods),
+            code="6902",
+            url="https://example.com/ir.pdf",
+            disclosure_date="2026-06-18",
+            extraction_status="ok",
+        )
+        assert result is True
+        assert session.add.call_count == 2  # detail + 1 metric（重複除去後）
+        metric = session.add.call_args_list[1][0][0]
+        assert metric.label_raw == "当期利益"
+        session.commit.assert_called()
+        assert not session.rollback.called
 
     def test_no_periods_saves_detail_only(self):
         """periods が空でも detail は保存される"""
