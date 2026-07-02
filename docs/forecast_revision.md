@@ -1,6 +1,6 @@
 # buyback_analysis 追加設計書 - 業績予想修正トラッカー対応
 
-version 2.1　2026-06-29
+version 2.2　2026-07-02
 
 ---
 
@@ -191,7 +191,7 @@ def get_tdnet_forecast_revision_data_by_urls(engine, urls):
 `extraction_status=ok` のレコードに対して重要フィールドの欠損を検出する関数。欠損があれば `[MISSING] field=... code=... url=...` 形式でログに記録する（URL付きなので grep や ChatGPT への投げ込みが容易）。データは保存済みの状態で呼ぶため保存処理には影響しない。
 
 ```python
-_PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value"]
+_PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value", "fiscal_year", "consolidation_type"]
 
 def check_missing_fields(data: dict, code: str, url: str) -> bool:
     """欠損があれば [MISSING] ログを記録し True を返す。"""
@@ -217,6 +217,8 @@ def check_missing_fields(data: dict, code: str, url: str) -> bool:
 | period | `label_raw` | PDF原文との対応が取れない |
 | period | `prev_value` | 変化率計算不能 |
 | period | `curr_value` | 変化率計算不能 |
+| period | `fiscal_year`（v2.2追加） | 対象決算期が不明・自然キーが不完全になる |
+| period | `consolidation_type`（v2.2追加） | 連結/単体が不明・自然キーが不完全になる |
 
 #### post_forecast_revision()
 
@@ -250,6 +252,8 @@ def post_forecast_revision(
         metric = ForecastRevisionMetric(
             url=url,
             period_type=period.get("period_type"),
+            fiscal_year=_to_int(period.get("fiscal_year")),
+            consolidation_type=period.get("consolidation_type"),
             metric_name=period.get("metric_name"),
             label_raw=period.get("label_raw"),
             prev_value=prev,
@@ -295,15 +299,23 @@ class ForecastRevisionDetail(Base):
 ### forecast_revision_metric.py
 
 ```python
-from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy import Column, Integer, String, Float, UniqueConstraint
 from buyback_analysis.models.base import Base
 
 class ForecastRevisionMetric(Base):
     __tablename__ = "forecast_revision_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "url", "period_type", "fiscal_year", "consolidation_type", "metric_name",
+            name="uq_forecast_revision_metrics_natural_key",
+        ),
+    )
 
     id                 = Column(Integer, primary_key=True, autoincrement=True)
     url                = Column(String, nullable=False)  # forecast_revision_details.url に対応
     period_type        = Column(String, nullable=False)  # '1q'/'2q'/'3q'/'4q'（4q=通期）
+    fiscal_year        = Column(Integer)                 # 対象決算期の西暦年（例:「2026年3月期」→2026）。抽出できなければnull
+    consolidation_type = Column(String)                  # 'consolidated'（連結）/ 'non_consolidated'（単体・個別）。抽出できなければnull
     metric_name        = Column(String, nullable=False)  # 正規化指標名（§8参照）
     label_raw          = Column(String)                  # PDF原文ラベル
     prev_value             = Column(Float)   # 前回予想値（レンジの場合は下限）
@@ -315,14 +327,23 @@ class ForecastRevisionMetric(Base):
     is_modified            = Column(Integer) # 0=据え置き / 1=修正あり
 ```
 
+> **fiscal_year / consolidation_type を追加した理由（v2.2, 2026-07-02）**
+> `forecast_revision_metrics` は当初 `url + period_type + metric_name` を暗黙の自然キーとしていたが、実際には主キー制約もユニーク制約もなく `id` autoincrement のみだった。この設計には次の欠陥があった。
+> 1. 対象決算期（年度）を持つ列がなく、`period_type`（1q/2q/3q/4q）だけでは「どの決算期の予想か」を特定できない。
+> 2. 連結/単体（個別）を区別する列がなく、両方を開示する文書で同一 `period_type` + `metric_name` の行が連結・単体で重複しても判別できない。
+> 3. 上記2点により有効な複合キーが定義できず、真の重複（LLMの二重抽出等）をDBレベルで検出・防止できなかった。
+> 対応として `fiscal_year`（対象決算期の西暦年）・`consolidation_type`（`consolidated`/`non_consolidated`）を追加し、`(url, period_type, fiscal_year, consolidation_type, metric_name)` の複合ユニーク制約を設定した。両カラムはLLMが抽出できない場合に保存自体をブロックしないよう nullable とし、欠損は `check_missing_fields()` で検出する（§6参照）。
+
 ### 重複チェック
 
-`midterm_plan_analysis` と同様に `code + url` 複合主キーで判定する。`is_checked` テーブルは使用しない。
+detail は `midterm_plan_analysis` と同様に `code + url` 複合主キーで判定する。`is_checked` テーブルは使用しない。
 
 ```python
 def _already_exists(session, code: str, url: str) -> bool:
     return session.get(ForecastRevisionDetail, {"code": code, "url": url}) is not None
 ```
+
+metric は上記の複合ユニーク制約 `(url, period_type, fiscal_year, consolidation_type, metric_name)` により、同一 `url` に対する再実行（`RERUN_URLS` 経由で detail/metric を削除してから再処理）以外での重複挿入は `IntegrityError` で防がれる。
 
 > **`is_checked` を使わない理由**
 > `is_checked` テーブルは `buyback_analysis` 専用で、`DetectType`（文書種別の分類結果）を紐付けて管理することが主目的。
@@ -371,6 +392,8 @@ from forecast_revision_analysis.models.forecast_revision_metric import ForecastR
         "periods": [
             {{
                 "period_type": "修正されている期間（'1q'/'2q'/'3q'/'4q'、4q=通期）",
+                "fiscal_year": "対象決算期の西暦年（下記ルール参照）",
+                "consolidation_type": "'consolidated'（連結）/ 'non_consolidated'（単体・個別）",
                 "metric_name": "正規化指標名（下記ルール参照）",
                 "label_raw": "PDF原文のラベル名",
                 "prev_value": "前回予想値（レンジの場合は下限・数値のみ・単位なし）",
@@ -398,6 +421,19 @@ from forecast_revision_analysis.models.forecast_revision_metric import ForecastR
 EBITDA → "ebitda"
 1株当たり当期（中間）純利益 → "eps"
 1株当たり配当 → "dividend_per_share"
+
+### fiscal_year 抽出ルール（v2.2追加）
+
+- タイトルや本文にある「YYYY年M月期」等の表記から、決算期を表す西暦年を数値のみで抽出する（例：「2026年3月期」→ `2026`）。
+- 今期・来期など複数の決算期にまたがる修正がある場合は `periods` の各要素ごとに正しい年度を設定する。
+- 決算期が本文のどこにも明記されていない場合のみ `null`。
+
+### consolidation_type 抽出ルール（v2.2追加）
+
+- 連結決算の数値は `"consolidated"`、単体（個別）決算のみの数値は `"non_consolidated"`。
+- 連結・単体の両方の予想表がある文書は `periods` にそれぞれ独立した要素として記載し、`consolidation_type` で区別する（同一 `period_type`・`metric_name` の組み合わせが2件になっても構わない）。
+- 連結決算を行っていない会社（単体のみ）は `"non_consolidated"`。
+- 判別できない場合のみ `null`。
 
 ### 注意点
 
@@ -437,6 +473,8 @@ EBITDA → "ebitda"
     "periods": [
       {
         "period_type": "2q",
+        "fiscal_year": 2026,
+        "consolidation_type": "consolidated",
         "metric_name": "sales",
         "label_raw": "売上高",
         "prev_value": 594000,
@@ -448,6 +486,8 @@ EBITDA → "ebitda"
       },
       {
         "period_type": "2q",
+        "fiscal_year": 2026,
+        "consolidation_type": "consolidated",
         "metric_name": "bussiness_income",
         "label_raw": "営業利益",
         "prev_value": 92000,
@@ -459,6 +499,8 @@ EBITDA → "ebitda"
       },
       {
         "period_type": "4q",
+        "fiscal_year": 2026,
+        "consolidation_type": "consolidated",
         "metric_name": "sales",
         "label_raw": "売上高",
         "prev_value": 1243000,
@@ -470,6 +512,8 @@ EBITDA → "ebitda"
       },
       {
         "period_type": "4q",
+        "fiscal_year": 2026,
+        "consolidation_type": "consolidated",
         "metric_name": "bussiness_income",
         "label_raw": "営業利益",
         "prev_value": 211000,

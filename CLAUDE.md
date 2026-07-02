@@ -193,4 +193,5 @@ tests/
 - `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`logger`・`notifier`・`get_pdf_data`・`parse_text_by_llm`）を共用する
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
 - `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う
-- `forecast_revision_analysis` の欠損チェック対象フィールド: detail レベルは `prev_forecast_date`、period レベルは `metric_name`・`label_raw`・`prev_value`・`curr_value`。これらが null だとデータとして意味をなさない。`check_missing_fields()` は `extraction_status=ok` のレコードにのみ適用し、欠損があっても保存は行う（欠損件数を完了通知のサマリーに含める）
+- `forecast_revision_analysis` の欠損チェック対象フィールド: detail レベルは `prev_forecast_date`、period レベルは `metric_name`・`label_raw`・`prev_value`・`curr_value`・`fiscal_year`・`consolidation_type`。これらが null だとデータとして意味をなさない。`check_missing_fields()` は `extraction_status=ok` のレコードにのみ適用し、欠損があっても保存は行う（欠損件数を完了通知のサマリーに含める）
+- `forecast_revision_metrics` の自然キーは `(url, period_type, fiscal_year, consolidation_type, metric_name)` の複合ユニーク制約で担保する。`fiscal_year`（対象決算期の西暦年）・`consolidation_type`（`consolidated`=連結 / `non_consolidated`=単体・個別）がないと、同一期間・同一指標名で連結/単体や決算年度違いの行を区別できず重複を検出できない設計上の欠陥があったため追加した（詳細は `docs/forecast_revision.md` §7参照）

@@ -22,6 +22,16 @@ def _to_float(v) -> float | None:
         return None
 
 
+def _to_int(v) -> int | None:
+    """LLMが文字列で返した年をintに変換する。変換不能な場合はNone。"""
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
 def _calc_change_pct(prev: float | None, curr: float | None) -> float | None:
     """対称変化率 2*(curr-prev)/(|prev|+|curr|)*100 を返す（-200%〜+200% に収まる）。"""
     if prev is None or curr is None:
@@ -32,7 +42,7 @@ def _calc_change_pct(prev: float | None, curr: float | None) -> float | None:
     return round(2 * (curr - prev) / denom * 100, 1)
 
 
-_PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value"]
+_PERIOD_REQUIRED_FIELDS = ["metric_name", "label_raw", "prev_value", "curr_value", "fiscal_year", "consolidation_type"]
 
 
 def check_missing_fields(data: dict, code: str, url: str) -> bool:
@@ -117,6 +127,8 @@ def post_forecast_revision(
             metric = ForecastRevisionMetric(
                 url=url,
                 period_type=period.get("period_type"),
+                fiscal_year=_to_int(period.get("fiscal_year")),
+                consolidation_type=period.get("consolidation_type"),
                 metric_name=period.get("metric_name"),
                 label_raw=period.get("label_raw"),
                 prev_value=prev,

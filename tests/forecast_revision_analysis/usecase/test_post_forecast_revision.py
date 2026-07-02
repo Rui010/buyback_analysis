@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 from sqlalchemy.exc import IntegrityError
 
-from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _calc_change_pct, _to_float
+from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _calc_change_pct, _to_float, _to_int
 from forecast_revision_analysis.models.forecast_revision_detail import ForecastRevisionDetail
 from forecast_revision_analysis.models.forecast_revision_metric import ForecastRevisionMetric
 
@@ -17,6 +17,8 @@ def _make_data(periods=None, reason_raw="修正理由の原文", prev_forecast_d
             "periods": periods if periods is not None else [
                 {
                     "period_type": "4q",
+                    "fiscal_year": 2026,
+                    "consolidation_type": "consolidated",
                     "metric_name": "sales",
                     "label_raw": "売上高",
                     "prev_value": 594000.0,
@@ -54,6 +56,21 @@ class TestToFloat:
 
     def test_invalid_string(self):
         assert _to_float("abc") is None
+
+
+class TestToInt:
+
+    def test_int(self):
+        assert _to_int(2026) == 2026
+
+    def test_string_int(self):
+        assert _to_int("2026") == 2026
+
+    def test_none(self):
+        assert _to_int(None) is None
+
+    def test_invalid_string(self):
+        assert _to_int("abc") is None
 
 
 class TestCalcChangePct:
@@ -176,6 +193,8 @@ class TestPostForecastRevision:
         assert isinstance(metric, ForecastRevisionMetric)
         assert metric.url == "https://example.com/ir.pdf"
         assert metric.period_type == "4q"
+        assert metric.fiscal_year == 2026
+        assert metric.consolidation_type == "consolidated"
         assert metric.metric_name == "sales"
         assert metric.prev_value == 594000.0
         assert metric.prev_value_upper is None
@@ -425,11 +444,13 @@ class TestCheckMissingFields:
             _make_data(prev_forecast_date=None), "5803", "https://example.com/ir.pdf"
         ) is True
 
-    @pytest.mark.parametrize("field", ["metric_name", "label_raw", "prev_value", "curr_value"])
+    @pytest.mark.parametrize("field", ["metric_name", "label_raw", "prev_value", "curr_value", "fiscal_year", "consolidation_type"])
     def test_period_required_field_none_returns_true(self, field):
         """period の必須フィールドが null なら True を返す"""
         period = {
             "period_type": "4q",
+            "fiscal_year": 2026,
+            "consolidation_type": "consolidated",
             "metric_name": "sales",
             "label_raw": "売上高",
             "prev_value": 1000.0,
