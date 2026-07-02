@@ -119,18 +119,61 @@ class TestDeduplicatePeriods:
         result = _deduplicate_periods(periods, "5803", "https://example.com/ir.pdf")
         assert len(result) == 2
 
-    def test_duplicate_natural_key_keeps_first_occurrence(self):
+    def test_duplicate_natural_key_keeps_first_occurrence_when_no_tiebreaker_applies(self):
+        """net_income以外は判定材料がないため先に出現した方を採用する"""
         first = {
             "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
-            "metric_name": "net_income", "label_raw": "当期利益", "curr_value": 470000.0,
+            "metric_name": "sales", "label_raw": "売上高（1回目）", "curr_value": 100.0,
         }
         second = {
             "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "sales", "label_raw": "売上高（2回目）", "curr_value": 200.0,
+        }
+        result = _deduplicate_periods([first, second], "5803", "https://example.com/ir.pdf")
+        assert len(result) == 1
+        assert result[0]["label_raw"] == "売上高（1回目）"
+
+    def test_net_income_duplicate_prefers_parent_attributable_when_second(self):
+        """net_income重複時、「親会社」を含むlabel_rawが2件目でもそちらを優先する"""
+        total = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "当期利益", "curr_value": 470000.0,
+        }
+        parent = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
             "metric_name": "net_income", "label_raw": "親会社の所有者に帰属する当期利益", "curr_value": 420000.0,
+        }
+        result = _deduplicate_periods([total, parent], "6902", "https://example.com/ir.pdf")
+        assert len(result) == 1
+        assert result[0]["label_raw"] == "親会社の所有者に帰属する当期利益"
+
+    def test_net_income_duplicate_prefers_parent_attributable_when_first(self):
+        """net_income重複時、「親会社」を含むlabel_rawが1件目ならそのまま維持する"""
+        parent = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "親会社株主に帰属する当期純利益", "curr_value": 420000.0,
+        }
+        total = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "当期利益", "curr_value": 470000.0,
+        }
+        result = _deduplicate_periods([parent, total], "6902", "https://example.com/ir.pdf")
+        assert len(result) == 1
+        assert result[0]["label_raw"] == "親会社株主に帰属する当期純利益"
+
+    def test_net_income_duplicate_without_parent_label_keeps_first(self):
+        """どちらのlabel_rawにも「親会社」が含まれない場合は先に出現した方を採用する"""
+        first = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "当期利益A", "curr_value": 100.0,
+        }
+        second = {
+            "period_type": "4q", "fiscal_year": 2026, "consolidation_type": "consolidated",
+            "metric_name": "net_income", "label_raw": "当期利益B", "curr_value": 200.0,
         }
         result = _deduplicate_periods([first, second], "6902", "https://example.com/ir.pdf")
         assert len(result) == 1
-        assert result[0]["label_raw"] == "当期利益"
+        assert result[0]["label_raw"] == "当期利益A"
 
     def test_different_metric_name_not_deduplicated(self):
         periods = [
@@ -326,7 +369,7 @@ class TestPostForecastRevision:
         assert result is True
         assert session.add.call_count == 2  # detail + 1 metric（重複除去後）
         metric = session.add.call_args_list[1][0][0]
-        assert metric.label_raw == "当期利益"
+        assert metric.label_raw == "親会社の所有者に帰属する当期利益"  # net_incomeは親会社帰属分を優先
         session.commit.assert_called()
         assert not session.rollback.called
 

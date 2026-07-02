@@ -54,6 +54,23 @@ def _period_natural_key(period: dict) -> tuple:
     )
 
 
+def _prefer_candidate(candidate: dict, existing: dict) -> bool:
+    """
+    同一自然キーのperiodが2件ある場合、candidateをexistingより優先すべきか判定する。
+
+    net_incomeの重複は多くの場合「親会社株主に帰属する当期純利益」（正）と
+    「当期利益」等の非支配持分を含む合計（誤）の混同なので、label_rawに「親会社」を
+    含む方（＝net_incomeの本来の定義に合致する方）を優先する。それ以外のケースは
+    判定材料がないため、先に出現した方（＝呼び出し側で既にkeepされている方）を維持する。
+    """
+    if candidate.get("metric_name") == "net_income":
+        candidate_is_parent = "親会社" in (candidate.get("label_raw") or "")
+        existing_is_parent = "親会社" in (existing.get("label_raw") or "")
+        if candidate_is_parent and not existing_is_parent:
+            return True
+    return False
+
+
 def _deduplicate_periods(periods: list, code: str, url: str) -> list:
     """
     forecast_revision_metricsの自然キー（period_type, fiscal_year, consolidation_type,
@@ -63,21 +80,29 @@ def _deduplicate_periods(periods: list, code: str, url: str) -> list:
     「当期利益」と「親会社の所有者に帰属する当期利益」が両方net_incomeに丸められる等）、
     そのままINSERTすると自然キーのUNIQUE制約違反でトランザクション全体がロールバックされ、
     該当レコードが1件も保存されなくなってしまう。保存前にコード側で確実に排除することで、
-    プロンプトの指示にLLMが従わなかった場合でも保存自体は失敗させない。先に出現した方を採用する。
+    プロンプトの指示にLLMが従わなかった場合でも保存自体は失敗させない。
+
+    単に「先に出現した方を採用」するだけでは、net_income（親会社株主に帰属する当期純利益を
+    意図している）の重複時にたまたま非支配持分込みの「当期利益」が先に来ると誤った数値を
+    採用してしまうため、_prefer_candidate() でnet_income特有の優先順位を適用する。
     """
-    seen = set()
-    result = []
+    kept: dict = {}
     for period in periods:
         key = _period_natural_key(period)
-        if key in seen:
-            logger.info(
-                f"[DUPLICATE] 自然キー重複のためperiodを除外しました: key={key}"
-                f" label_raw={period.get('label_raw')} code={code} url={url}"
-            )
+        if key not in kept:
+            kept[key] = period
             continue
-        seen.add(key)
-        result.append(period)
-    return result
+
+        existing = kept[key]
+        if _prefer_candidate(period, existing):
+            dropped, kept[key] = existing, period
+        else:
+            dropped = period
+        logger.info(
+            f"[DUPLICATE] 自然キー重複のためperiodを除外しました: key={key}"
+            f" label_raw={dropped.get('label_raw')} code={code} url={url}"
+        )
+    return list(kept.values())
 
 
 def check_missing_fields(data: dict, code: str, url: str) -> bool:
