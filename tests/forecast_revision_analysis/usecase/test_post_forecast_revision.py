@@ -301,8 +301,8 @@ class TestPostForecastRevision:
         assert not session.add.called
         assert not session.commit.called
 
-    def test_integrity_error_returns_true(self):
-        """主キー重複はロールバックしてスキップ。Trueを返す（失敗ではなくスキップ）"""
+    def test_integrity_error_returns_false(self):
+        """主キー/自然キー重複はロールバックしFalseを返す（呼び出し元が保存失敗として検知できるように）"""
         session = MagicMock()
         session.flush.side_effect = IntegrityError("Duplicate key", None, None)
 
@@ -315,7 +315,7 @@ class TestPostForecastRevision:
             extraction_status="ok",
         )
 
-        assert result is True
+        assert result is False
         session.rollback.assert_called()
         assert not session.commit.called
 

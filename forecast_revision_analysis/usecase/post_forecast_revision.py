@@ -144,10 +144,15 @@ def post_forecast_revision(
         session.commit()
         logger.info(f"業績予想修正を保存しました: {code} - {url}")
         return True
-    except IntegrityError:
+    except IntegrityError as e:
         session.rollback()
-        logger.info(f"主キーエラーによりスキップしました: {code} - {url}")
-        return True
+        # 呼び出し元の_already_exists()で既存レコードは事前に除外済みのため、ここに到達する
+        # IntegrityErrorは「既に保存済みなので安全にスキップ」ではなく、多くの場合
+        # periods内の自然キー重複（例: metric_nameの正規化で複数指標が同じキーに丸められた）
+        # のような実データ上の問題である。Falseを返し、呼び出し元に「保存失敗」として
+        # 検知・カウントさせる（詳細はdocs/forecast_revision_llm_pipeline_redesign.md参照）。
+        logger.error(f"主キーエラーにより保存に失敗しました: {code} - {url} - {e}")
+        return False
     except Exception as e:
         session.rollback()
         logger.error(f"保存に失敗しました: {code} - {url} - {e}")
