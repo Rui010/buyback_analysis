@@ -1,4 +1,7 @@
 import os
+
+os.environ.setdefault("LOG_FILE", "buyback_analysis.log")
+
 import datetime
 from dotenv import load_dotenv
 from buyback_analysis.interface.postgresql_engine import get_database_engine

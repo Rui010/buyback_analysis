@@ -6,9 +6,10 @@ from logging.handlers import TimedRotatingFileHandler
 
 class Logger:
     def __init__(
-        self, log_dir=None, log_file="app.log", failed_data_file="failed_data.log"
+        self, log_dir=None, log_file=None, failed_data_file="failed_data.log"
     ):
         log_dir = log_dir or os.getenv("LOG_DIR", "logs")
+        log_file = log_file or os.getenv("LOG_FILE", "app.log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, log_file)
         self.failed_data_path = os.path.join(log_dir, failed_data_file)

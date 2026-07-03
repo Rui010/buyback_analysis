@@ -1,4 +1,7 @@
 import os
+
+os.environ.setdefault("LOG_FILE", "midterm_plan_analysis.log")
+
 import datetime
 from dotenv import load_dotenv
 
