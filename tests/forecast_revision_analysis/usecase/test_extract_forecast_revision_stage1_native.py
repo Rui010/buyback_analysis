@@ -169,3 +169,50 @@ class TestExtractForecastRevisionStage1Native:
 
         assert result["data"]["reason_raw"] == "修正理由の原文"
         mock_client.files.delete.assert_called_once()
+
+    def test_lead_text_extraction_failure_falls_back_to_placeholder(self):
+        """存在しないpdf_pathでも例外を出さず、プロンプトにフォールバック文言を埋め込んで続行する"""
+        mock_response = MagicMock()
+        mock_response.text = VALID_JSON
+        mock_client = _make_mock_client(response=mock_response)
+
+        with patch(
+            "forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native.genai.Client",
+            return_value=mock_client,
+        ), patch(
+            "forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native.load_prompt_template"
+        ) as mock_load_prompt:
+            mock_load_prompt.return_value = "prompt"
+            extract_forecast_revision_stage1_native(
+                title="t", pdf_path="not_exist.pdf", code="5803", name="n"
+            )
+
+        _, kwargs = mock_load_prompt.call_args
+        assert kwargs["lead_text"] == "（抽出できませんでした）"
+
+    def test_lead_text_extracted_from_first_page_is_passed_to_prompt(self):
+        """PDF1ページ目冒頭のテキストがlead_textとしてプロンプトに渡される"""
+        mock_response = MagicMock()
+        mock_response.text = VALID_JSON
+        mock_client = _make_mock_client(response=mock_response)
+
+        mock_reader = MagicMock()
+        mock_reader.is_encrypted = False
+        mock_reader.pages = [MagicMock(extract_text=lambda: "2025年10月31日に公表した業績予想を修正")]
+
+        with patch(
+            "forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native.genai.Client",
+            return_value=mock_client,
+        ), patch(
+            "forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native.PdfReader",
+            return_value=mock_reader,
+        ), patch("builtins.open", MagicMock()), patch(
+            "forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native.load_prompt_template"
+        ) as mock_load_prompt:
+            mock_load_prompt.return_value = "prompt"
+            extract_forecast_revision_stage1_native(
+                title="t", pdf_path="a.pdf", code="5803", name="n"
+            )
+
+        _, kwargs = mock_load_prompt.call_args
+        assert kwargs["lead_text"] == "2025年10月31日に公表した業績予想を修正"

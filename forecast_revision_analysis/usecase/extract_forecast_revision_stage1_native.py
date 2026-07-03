@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 from google import genai
 from google.genai.errors import APIError
+from pypdf import PdfReader
 
 from buyback_analysis.consts.llm_model import LlmModel
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
@@ -17,6 +18,28 @@ from forecast_revision_analysis.usecase.schemas import Stage1Extraction
 logger = Logger()
 
 STAGE1_TEMPERATURE = 0.0
+LEAD_TEXT_MAX_CHARS = 1000
+
+
+def _extract_lead_text(pdf_path: str, max_chars: int = LEAD_TEXT_MAX_CHARS) -> str:
+    """
+    PDF1ページ目冒頭のテキストを抽出する。
+
+    ネイティブPDF方式（Gemini Files APIでの画像的な読み取り）は、ヘッダー情報が密集した
+    1ページ目冒頭の書き出し段落（前回予想の公表日など）を読み落とすことがあるため、
+    プロンプトへの補助情報として渡す。抽出に失敗してもネイティブPDF方式自体は継続できるよう、
+    例外は握りつぶして空文字列を返す。
+    """
+    try:
+        with open(pdf_path, "rb") as pdf_file:
+            reader = PdfReader(pdf_file)
+            if reader.is_encrypted:
+                reader.decrypt("")
+            text = reader.pages[0].extract_text() or ""
+        return text[:max_chars]
+    except Exception as e:
+        logger.info(f"[Stage1] 補助テキスト抽出に失敗しました（無視して続行）: {e}")
+        return ""
 
 
 def extract_forecast_revision_stage1_native(
@@ -34,8 +57,9 @@ def extract_forecast_revision_stage1_native(
     if not api_key:
         raise ValueError("GEMINI_API_KEYが設定されていません")
 
+    lead_text = _extract_lead_text(pdf_path) or "（抽出できませんでした）"
     prompt = load_prompt_template(
-        "forecast_revision_stage1_native.md", title=title, code=code, name=name
+        "forecast_revision_stage1_native.md", title=title, code=code, name=name, lead_text=lead_text
     )
 
     max_retries = 3
