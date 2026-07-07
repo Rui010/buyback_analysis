@@ -13,11 +13,15 @@ from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
 from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan  # init_db() に登録するためインポート
+from midterm_plan_analysis.models.midterm_plan_keyword import MidtermPlanKeyword  # noqa: F401 init_db() に登録するためインポート
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import (
     get_tdnet_midterm_data,
     get_tdnet_midterm_data_by_urls,
 )
 from midterm_plan_analysis.usecase.post_midterm_plan import post_midterm_plan
+from midterm_plan_analysis.usecase.extract_midterm_keywords import extract_midterm_keywords
+from midterm_plan_analysis.usecase.extract_midterm_keywords_native import extract_midterm_keywords_native
+from midterm_plan_analysis.usecase.post_midterm_keywords import post_midterm_keywords
 from buyback_analysis.usecase.classify_midterm_by_llm import classify_midterm_by_llm
 from buyback_analysis.interface.notifier import notify_success, notify_error
 
@@ -29,6 +33,7 @@ SYSTEM_START_DATE = os.getenv("SYSTEM_START_DATE")
 SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")
 
 USE_NATIVE_PDF = os.getenv("MIDTERM_USE_NATIVE_PDF", "false").lower() == "true"
+EXTRACT_KEYWORDS = os.getenv("MIDTERM_EXTRACT_KEYWORDS", "false").lower() == "true"
 RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
 
 logger = Logger()
@@ -65,6 +70,7 @@ def main():
             logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
             for url in RERUN_URLS:
                 session.query(MidtermPlan).filter(MidtermPlan.url == url).delete()
+                session.query(MidtermPlanKeyword).filter(MidtermPlanKeyword.url == url).delete()
             session.commit()
             df = get_tdnet_midterm_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
         else:
@@ -141,6 +147,25 @@ def main():
                 )
                 failed_parse += 1
                 continue
+
+            if EXTRACT_KEYWORDS:
+                if USE_NATIVE_PDF:
+                    keywords_obj = extract_midterm_keywords_native(
+                        title=title, pdf_path=pdf_path, code=code, name=name
+                    )
+                else:
+                    keywords_obj = extract_midterm_keywords(
+                        title=title, content=content, code=code, name=name
+                    )
+                if keywords_obj is None:
+                    logger.error(f"[Keywords] キーワード抽出に失敗しました: {url}")
+                post_midterm_keywords(
+                    session=session,
+                    code=code,
+                    url=url,
+                    disclosure_date=disclosure_date,
+                    keywords=(keywords_obj or {}).get("data", {}).get("keywords"),
+                )
 
             metrics = obj.get("data", {}).get("metrics")
             has_metrics = bool(metrics) and any(

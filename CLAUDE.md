@@ -19,6 +19,9 @@ python -m buyback_analysis.main
 
 # 中期経営計画パイプラインの実行
 python -m midterm_plan_analysis.main
+
+# 中期経営計画の過去データへのキーワードバックフィル（1回でMIDTERM_BACKFILL_KEYWORDS_LIMIT件まで処理、繰り返し実行で続きから再開）
+python -m midterm_plan_analysis.backfill_keywords
 ```
 
 ## 環境変数（`.env`）
@@ -38,6 +41,8 @@ python -m midterm_plan_analysis.main
 | `SLACK_MENTION` | エラー時のメンション先（例: `@username`、省略可） |
 | `BUYBACK_USE_NATIVE_PDF` | `true` でbuyback_analysisの抽出ステップをネイティブPDF方式に切り替え（省略時は`false`） |
 | `MIDTERM_USE_NATIVE_PDF` | `true` でmidterm_plan_analysisをネイティブPDF方式に切り替え（省略時は`false`） |
+| `MIDTERM_EXTRACT_KEYWORDS` | `true` でmidterm_plan_analysisに戦略テーマ・重点施策のキーワード抽出（別LLMコール）を追加する（省略時は`false`） |
+| `MIDTERM_BACKFILL_KEYWORDS_LIMIT` | `backfill_keywords.py`実行時に1回で処理するmidterm_plans行数の上限（省略時は`50`） |
 | `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLの既存データを削除して強制再処理する（両パイプライン共通） |
 
 ## アーキテクチャ概要
@@ -83,12 +88,19 @@ buyback_analysis/
 
 ```
 midterm_plan_analysis/
-├── main.py              # エントリーポイント・パイプライン制御
+├── main.py                 # エントリーポイント・パイプライン制御
+├── backfill_keywords.py    # 過去データへのキーワードバックフィル専用エントリーポイント
 ├── models/
-│   └── midterm_plan.py  # midterm_plans テーブル（SQLAlchemy ORM）
+│   ├── midterm_plan.py         # midterm_plans テーブル（SQLAlchemy ORM）
+│   └── midterm_plan_keyword.py # midterm_plan_keywords テーブル（キーワード1件=1行）
 └── usecase/
-    ├── get_tdnet_midterm_data.py  # PostgreSQLから「経営計画」「中計」含みタイトルを取得
-    └── post_midterm_plan.py       # SQLiteへの保存
+    ├── get_tdnet_midterm_data.py               # PostgreSQLから「経営計画」「中計」含みタイトルを取得
+    ├── post_midterm_plan.py                    # SQLiteへの保存
+    ├── schemas.py                              # キーワード抽出のresponseSchema（Pydantic）
+    ├── extract_midterm_keywords.py             # キーワード抽出（テキスト方式）
+    ├── extract_midterm_keywords_native.py      # キーワード抽出（ネイティブPDF方式）
+    ├── post_midterm_keywords.py                # キーワードのSQLiteへの保存
+    └── get_midterm_plans_missing_keywords.py   # keyword未抽出のmidterm_plans行を取得（backfill_keywords.pyが使用）
 ```
 
 `interface/`・`usecase/get_pdf_data.py`・`usecase/parse_text_by_llm.py` は `buyback_analysis` のものを共用する。
@@ -145,8 +157,10 @@ forecast_revision_analysis/
 1. **PostgreSQL**から`tdnet`テーブルのタイトルに「経営計画」または「中計」を含むIR一覧を取得
 2. 各IRのPDFをダウンロードしてテキスト抽出
 3. `midterm_plans`テーブルの主キー（`code` + `url`）で重複チェック → 処理済みならスキップ
-4. `buyback_analysis/prompts/midterm_plan.md` を使い**Gemini**でJSON抽出
-5. 抽出結果（計画名・開始/終了年度・定量目標一覧）を**SQLite**の`midterm_plans`テーブルに保存
+4. `buyback_analysis/prompts/midterm_plan.md` を使い**Gemini**でJSON抽出（定量目標`metrics`）
+5. `MIDTERM_EXTRACT_KEYWORDS=true` の場合、`metrics`抽出とは別のLLMコールで`buyback_analysis/prompts/midterm_keywords.md`を使い戦略テーマ・重点施策のキーワードを`responseSchema`（`MidtermKeywordExtraction`）で抽出し、`midterm_plan_keywords`テーブルに1キーワード1行で保存する（`metrics`抽出が失敗した場合はキーワード抽出も行わない）
+6. 抽出結果（計画名・開始/終了年度・定量目標一覧）を**SQLite**の`midterm_plans`テーブルに保存
+7. **`backfill_keywords.py`（別エントリーポイント）**: `MIDTERM_EXTRACT_KEYWORDS`を後から有効化した場合など、既に`midterm_plans`に保存済み（`extraction_status=ok`）だが`midterm_plan_keywords`が未保存の行にキーワード抽出だけを追加実行する。`main.py`は`_already_exists()`で処理済みURLを丸ごとスキップするため、通常のパイプラインでは過去データにキーワードが後付けされない。`get_midterm_plans_missing_keywords()`で開示日が新しい順に`MIDTERM_BACKFILL_KEYWORDS_LIMIT`件（デフォルト50件）を取得し、`get_tdnet_midterm_data_by_urls()`でPostgreSQLから`title`/`name`を引き直し（`midterm_plans`には保存されていないため）、PDFを再取得してキーワード抽出のみ実行する（`metrics`の再抽出は行わない）。処理済みの行は次回呼び出し時に自動的に対象から外れるため、同じコマンドを繰り返し実行するだけで続きから再開できる
 
 ## テスト方針
 
@@ -201,6 +215,8 @@ tests/
 - `midterm_plan_analysis` は独自の `interface/` を持たず、`buyback_analysis` のユーティリティ群（`postgresql_engine`・`sqlite_engine`・`logger`・`notifier`・`get_pdf_data`・`parse_text_by_llm`）を共用する
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
 - `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う
+- `midterm_plan_analysis` のキーワード抽出（`extract_midterm_keywords.py`/`extract_midterm_keywords_native.py`）は、`metrics`抽出（決定論的な数値抽出）とは性質が異なる判断を伴うタスクのため、既存の`metrics`抽出プロンプトには混在させず別プロンプト・別LLMコールとして分離している（forecast_revisionのStage1/Stage2分離と同じ判断基準）。保存先も`midterm_plans`に列を足すのではなく`midterm_plan_keywords`という別テーブルにしている。理由は (1) 本プロジェクトはAlembic等のマイグレーションツールを持たず`init_db()`が`create_all()`のみのため、既存テーブルへの列追加は本番DBへの手動`ALTER TABLE`を要するが別テーブルなら不要、(2) 将来の「銘柄横断でのキーワード検索・トレンド分析」にはJSON列より縦持ちテーブルの方がJOIN/GROUP BYで直接使えるため。`midterm_plan_keywords`は`forecast_revision_metrics`と同じく`id`（autoincrement PK）+ `UniqueConstraint(code, url, keyword)`構成（複合PKではない）とし、各行は`keyword`（生表記）に加え`context_raw`（`reason_raw`と同じ「原文逐語引用」の思想、`Optional`）を持つ。LLMが同一文書内で同じ`keyword`を重複して返す場合があるため、`post_midterm_keywords()`は保存前に`keyword`単位で重複除去（先勝ち）してから`insert`する（除去しないと`UniqueConstraint`違反でその文書のキーワードが全件ロールバックされる）。設計背景は `docs/midterm_plan_design.md`「キーワード抽出（別テーブル・2コール分離設計）」を参照
+- `midterm_plan_analysis`の`main.py`は`_already_exists()`で処理済みURL（`midterm_plans`に存在するURL）を丸ごとスキップするため、`MIDTERM_EXTRACT_KEYWORDS`を後から有効化しても既存の過去データにはキーワードが後付けされない。この場合は`backfill_keywords.py`（別エントリーポイント）を使う。`RERUN_URLS`でも代用できるが、削除→`metrics`含め全再抽出になり不要なGemini呼び出し・再抽出結果のブレのリスクがあるため、キーワードだけを埋めたい場合は`backfill_keywords.py`を使うこと
 - `forecast_revision_analysis` の欠損チェック対象フィールド: detail レベルは `prev_forecast_date`、period レベルは `metric_name`・`label_raw`・`prev_value`・`curr_value`・`fiscal_year`・`consolidation_type`。これらが null だとデータとして意味をなさない。`check_missing_fields()` は `extraction_status=ok` のレコードにのみ適用し、欠損があっても保存は行う（欠損件数を完了通知のサマリーに含める）
 - `forecast_revision_analysis` のLLM抽出はStage1（抽出・`responseSchema`で型固定・`temperature=0`）とStage2（推論・PDF本文は再送せずStage1の要約のみを入力・`temperature=0.2`）に分離している。`is_modified`はStage1のresponseSchemaに含めず、`prev_value`/`curr_value`の比較でコード側（`post_forecast_revision.py`・`main.py`の`_determine_extraction_status()`）が確定する。設計背景は `docs/forecast_revision_llm_pipeline_redesign.md` を参照
 - `forecast_revision_metrics` の自然キーは `(url, period_type, fiscal_year, consolidation_type, metric_name)` の複合ユニーク制約で担保する。`fiscal_year`（対象決算期の西暦年）・`consolidation_type`（`consolidated`=連結 / `non_consolidated`=単体・個別）がないと、同一期間・同一指標名で連結/単体や決算年度違いの行を区別できず重複を検出できない設計上の欠陥があったため追加した（詳細は `docs/forecast_revision.md` §7参照）
