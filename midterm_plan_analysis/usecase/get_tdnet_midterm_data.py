@@ -5,7 +5,11 @@ from buyback_analysis.interface.logger import Logger
 
 logger = Logger()
 
-MIDTERM_KEYWORDS = ["経営計画", "中計"]
+MIDTERM_KEYWORDS = [
+    "経営計画",
+    "中計",
+    r"(?:中期|中長期).{0,10}(?:計画|方針|戦略|ビジョン|目標|指針)",
+]
 
 _SELECT_COLUMNS = """
     SELECT
