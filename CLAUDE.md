@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## データソース（最重要・必ず確認すること）
+
+- **PostgreSQL**（`POSTGRESQL_DB_*`、外部・読み取り専用）: TDnetの元データ（`tdnet`テーブル。`title`・`link`・`code`・`name`・`date`など）。**title（開示タイトル）の確認・調査は必ずこちら。**そのほか3パイプラインの抽出結果をコピーしたテーブルが存在する。（`buyback_announcements`等・`buyback_midterm_plans`等・`buyback_forecast_revision_details`/`buyback_forecast_revision_metrics`）調査の際はこのデータを参照すること。
+- **SQLite**（`SQLITE_DB_URL`、`buyback.db`）: 3パイプラインの抽出結果の書き込み先（`buyback_announcements`等・`midterm_plans`等・`forecast_revision_details`/`forecast_revision_metrics`）。titleやPDF本文は保存していない。サーバーのみに存在するため、リモートの開発環境ではアクセスすることがない
+
+## 実行環境（シェルに注意）
+
+- 実行環境はWindows・PowerShell。本ドキュメントのコマンド例で環境変数を1回だけ指定して実行する場合は、`VAR=value command`ではなく以下の書き方をすること。
+  ```powershell
+  $env:RERUN_URLS = "https://..."
+  python -m forecast_revision_analysis.main
+  ```
+
 ## 方針
 
 - テストファースト
@@ -142,7 +155,7 @@ forecast_revision_analysis/
 1. **PostgreSQL**から`tdnet`テーブルのタイトルに「修正」「業績」両方を含むIR一覧を取得
 2. 各IRのPDFをダウンロードしてテキスト抽出（`FORECAST_REVISION_USE_NATIVE_PDF=true` でネイティブPDF方式）
 3. `forecast_revision_details` 主キー（`code` + `url`）で重複チェック → 処理済みならスキップ
-4. タイトルに「取り下げ」「廃止」「撤回」があれば `extraction_status=withdrawn` で即保存
+4. タイトルに「予想の取り下げ」「予想を取り下げ」「予想の廃止」「予想を廃止」「予想の撤回」「予想を撤回」のいずれかがあれば `extraction_status=withdrawn` で即保存（「業績予想の修正及び中期経営計画の取り下げ」のように業績予想の修正と無関係な文書の取り下げが1つのタイトルに併記されるケースがあるため、「取り下げ」等の単独一致ではなく業績予想自体の取り下げを示す複合語で判定する）
 5. **Stage1**: `buyback_analysis/prompts/forecast_revision_stage1.md`（ネイティブPDF方式は`forecast_revision_stage1_native.md`）を使い**Gemini**で抽出系フィールド（`periods`/`prev_forecast_date`/`value_unit`/`reason_raw`）を`responseSchema`（`Stage1Extraction`）で型固定して抽出
 6. **Stage2**: Stage1結果から`build_stage2_context()`で機械整形した要約テキスト（PDF本文は含まない）をもとに、`buyback_analysis/prompts/forecast_revision_stage2.md`を使い**Gemini**で推論系フィールド（`direct_factors`/`structural_vulnerability`/`spillover_conditions`）を`responseSchema`（`Stage2Inference`）で抽出。Stage1が失敗した場合はStage2を実行しない
 7. `merge_stage_results()`でStage1/Stage2の結果をマージ（Stage2失敗時は推論系フィールドを`None`のまま、Stage1のデータは保存する）

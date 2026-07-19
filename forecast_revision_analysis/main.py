@@ -33,7 +33,11 @@ SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")
 USE_NATIVE_PDF = os.getenv("FORECAST_REVISION_USE_NATIVE_PDF", "false").lower() == "true"
 RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
 
-WITHDRAWN_KEYWORDS = ["取り下げ", "廃止", "撤回"]
+WITHDRAWN_KEYWORDS = [
+    "予想の取り下げ", "予想を取り下げ",
+    "予想の廃止", "予想を廃止",
+    "予想の撤回", "予想を撤回",
+]
 CORRECTION_KEYWORDS = ["訂正"]
 
 logger = Logger()
