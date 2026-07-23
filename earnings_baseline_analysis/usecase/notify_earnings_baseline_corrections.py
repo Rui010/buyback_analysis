@@ -3,6 +3,7 @@ import pandas as pd
 
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.interface.notifier import notify_success
+from earnings_baseline_analysis.usecase.get_tdnet_earnings_baseline_data import TARGET_MARKETS
 
 logger = Logger()
 
@@ -14,6 +15,7 @@ _SELECT_COLUMNS = """
         , "public"."tdnet"."link" AS "link"
         , "public"."tdnet"."date" AS "date"
     FROM "public"."tdnet"
+    JOIN "public"."Brands" ON "public"."Brands"."code" = "public"."tdnet"."code"
 """
 
 
@@ -27,7 +29,8 @@ def get_earnings_baseline_corrections(
 
     earnings_baseline_analysisの抽出パイプライン（get_tdnet_earnings_baseline_data）は
     タイトルに「訂正」「一部」を含む行を除外しているため、この関数で除外側を別途取得し
-    日次Slack通知の対象とする。
+    日次Slack通知の対象とする。抽出パイプラインと同様にBrands.marketをプライム/スタンダード/
+    グロースに絞り込む（絞り込まないと抽出対象外の市場の訂正まで通知に混ざるため）。
 
     Args:
         engine: SQLAlchemy engine
@@ -36,18 +39,22 @@ def get_earnings_baseline_corrections(
     Returns:
         pd.DataFrame: 訂正告知データ
     """
+    market_placeholders = ", ".join([f":m{i}" for i in range(len(TARGET_MARKETS))])
     query_text = text(
         f'{_SELECT_COLUMNS}'
         ' WHERE "public"."tdnet"."date" <= :end_date'
         ' AND "public"."tdnet"."date" >= :start_date'
+        f' AND "public"."Brands"."market" IN ({market_placeholders})'
         ' ORDER BY "public"."tdnet"."date" ASC'
     )
+    params = {"end_date": end_date, "start_date": start_date}
+    params.update({f"m{i}": market for i, market in enumerate(TARGET_MARKETS)})
     try:
         with engine.connect() as connection:
             df = pd.read_sql_query(
                 query_text,
                 connection,
-                params={"end_date": end_date, "start_date": start_date},
+                params=params,
             )
         filtered_df = df[
             df["title"].str.contains("決算短信", na=False)

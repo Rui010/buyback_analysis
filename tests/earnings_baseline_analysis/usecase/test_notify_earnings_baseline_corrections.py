@@ -34,6 +34,25 @@ class TestGetEarningsBaselineCorrections:
             first_arg = mock_read.call_args[0][0]
             assert isinstance(first_arg, type(text("")))
 
+    def test_sql_filters_by_target_markets(self):
+        """抽出パイプラインと同様にBrands.marketで絞り込むパラメータが渡されることを確認"""
+        engine = MagicMock()
+        mock_df = _make_df([
+            {"code": "1001", "name": "A社", "title": "（訂正）「2026年３月期 決算短信」の一部訂正について",
+             "link": "url1", "date": "2026-05-13"},
+        ])
+
+        with patch(
+            "earnings_baseline_analysis.usecase.notify_earnings_baseline_corrections.pd.read_sql_query"
+        ) as mock_read:
+            mock_read.return_value = mock_df
+            get_earnings_baseline_corrections(engine, "2026-05-13", "2026-05-13")
+
+            first_arg = mock_read.call_args[0][0]
+            assert '"public"."Brands"' in str(first_arg)
+            params = mock_read.call_args[1]["params"]
+            assert set(params.values()) >= {"プライム", "スタンダード", "グロース"}
+
     def test_correction_and_partial_correction_titles_included(self):
         """「訂正」または「一部」を含むタイトルのみ返す"""
         engine = MagicMock()
