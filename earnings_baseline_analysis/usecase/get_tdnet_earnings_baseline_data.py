@@ -6,7 +6,7 @@ from buyback_analysis.interface.logger import Logger
 logger = Logger()
 
 INCLUDE_KEYWORD = "決算短信"
-EXCLUDE_KEYWORDS = ["四半期", "訂正", "一部", "中間", "補足"]
+EXCLUDE_KEYWORDS = ["四半期", "訂正", "一部", "中間", "補足", "お知らせ"]
 TARGET_MARKETS = ["プライム", "スタンダード", "グロース"]
 
 _SELECT_COLUMNS = """
@@ -70,7 +70,7 @@ def get_tdnet_earnings_baseline_data(
     """
     Get TDnet earnings baseline data from the database.
 
-    タイトルに「決算短信」を含み「四半期」「訂正」「一部」「中間」「補足」のいずれも含まず、
+    タイトルに「決算短信」を含み「四半期」「訂正」「一部」「中間」「補足」「お知らせ」のいずれも含まず、
     Brands.marketがプライム/スタンダード/グロースのいずれかの行のみを対象とする。
 
     Args:
