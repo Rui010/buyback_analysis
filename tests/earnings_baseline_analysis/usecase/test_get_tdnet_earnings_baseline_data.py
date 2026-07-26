@@ -56,7 +56,7 @@ class TestGetTdnetEarningsBaselineData:
         assert result["code"].tolist() == ["2168"]
 
     def test_title_exclude_keywords(self):
-        """「四半期」「訂正」「一部」「中間」を含むタイトルは除外する"""
+        """「四半期」「訂正」「一部」「中間」「補足」を含むタイトルは除外する"""
         engine = MagicMock()
         mock_df = _make_df([
             {"time": "10:00", "code": "1001", "name": "A社",
@@ -67,6 +67,8 @@ class TestGetTdnetEarningsBaselineData:
              "title": "（訂正・数値データ訂正）「2026年３月期 決算短信」の一部訂正について", "link": "url3", "date": "2026-05-13"},
             {"time": "10:00", "code": "1004", "name": "D社",
              "title": "2026年３月期 中間決算短信〔日本基準〕（連結）", "link": "url4", "date": "2026-05-13"},
+            {"time": "10:00", "code": "1005", "name": "E社",
+             "title": "2026年５月期 決算短信補足資料", "link": "url5", "date": "2026-05-13"},
         ])
 
         with patch(
