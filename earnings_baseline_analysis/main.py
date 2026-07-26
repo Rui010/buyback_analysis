@@ -158,10 +158,11 @@ def main():
         )
         notify_success("earnings_baseline_analysis", summary)
 
+        today_str = datetime.date.today().strftime("%Y-%m-%d")
         corrections_count = notify_earnings_baseline_corrections(
             engine=postgresql_engine,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=today_str,
+            end_date=today_str,
         )
         if corrections_count:
             logger.info(f"決算短信の訂正告知を通知しました: {corrections_count}件")
