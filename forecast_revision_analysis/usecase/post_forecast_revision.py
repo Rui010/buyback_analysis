@@ -100,7 +100,8 @@ def _deduplicate_periods(periods: list, code: str, url: str) -> list:
             dropped = period
         logger.info(
             f"[DUPLICATE] 自然キー重複のためperiodを除外しました: key={key}"
-            f" label_raw={dropped.get('label_raw')} code={code} url={url}"
+            f" label_raw={dropped.get('label_raw')} kept_label_raw={kept[key].get('label_raw')}"
+            f" code={code} url={url}"
         )
     return list(kept.values())
 
