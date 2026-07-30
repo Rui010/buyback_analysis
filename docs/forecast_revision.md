@@ -224,6 +224,13 @@ def check_missing_fields(data: dict, code: str, url: str) -> bool:
 
 #### post_forecast_revision()
 
+`forecast_revision_metrics` の数値列（`prev_value`、`prev_value_upper`、
+`curr_value`、`curr_value_upper`、`prev_year_actual`、`change_pct`）は、SQLiteへ
+保存する直前に共通の `_to_float()` を通す。桁区切りカンマを除去して `float` 化し、
+空文字・空白のみは `None` とする。変換不能値は `ValueError` として保存処理を失敗させ、
+ロールバックおよびコード・URL付きエラーログにより検知可能にする。SQLiteはFLOAT列にも
+文字列を保持できるため、DBの型変換には依存しない。
+
 ```python
 def post_forecast_revision(
     session: Session,

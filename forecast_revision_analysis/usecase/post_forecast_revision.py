@@ -13,13 +13,23 @@ logger = Logger()
 
 
 def _to_float(v) -> float | None:
-    """LLMが文字列で返した数値をfloatに変換する。変換不能な場合はNone。"""
+    """数値をSQLite保存用のfloatへ正規化する。
+
+    Noneおよび空白だけの文字列は欠損値としてNoneにする。文字列の桁区切りカンマは
+    除去する。その他の変換不能値はデータ不良を隠さないようValueErrorにする。
+    """
     if v is None:
         return None
+    normalized = v
+    if isinstance(v, str):
+        normalized = v.strip()
+        if not normalized:
+            return None
+        normalized = normalized.replace(",", "")
     try:
-        return float(v)
-    except (ValueError, TypeError):
-        return None
+        return float(normalized)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"floatに変換できません: {v!r}") from e
 
 
 def _to_int(v) -> int | None:
@@ -184,6 +194,10 @@ def post_forecast_revision(
         for period in _deduplicate_periods(inner.get("periods", []), code, url):
             prev = _to_float(period.get("prev_value"))
             curr = _to_float(period.get("curr_value"))
+            prev_upper = _to_float(period.get("prev_value_upper"))
+            curr_upper = _to_float(period.get("curr_value_upper"))
+            prev_year_actual = _to_float(period.get("prev_year_actual"))
+            change_pct = _to_float(_calc_change_pct(prev, curr))
             is_modified = 0 if prev == curr else 1
             metric = ForecastRevisionMetric(
                 url=url,
@@ -193,11 +207,11 @@ def post_forecast_revision(
                 metric_name=period.get("metric_name"),
                 label_raw=period.get("label_raw"),
                 prev_value=prev,
-                prev_value_upper=_to_float(period.get("prev_value_upper")),
+                prev_value_upper=prev_upper,
                 curr_value=curr,
-                curr_value_upper=_to_float(period.get("curr_value_upper")),
-                prev_year_actual=_to_float(period.get("prev_year_actual")),
-                change_pct=_calc_change_pct(prev, curr),
+                curr_value_upper=curr_upper,
+                prev_year_actual=prev_year_actual,
+                change_pct=change_pct,
                 is_modified=is_modified,
             )
             session.add(metric)

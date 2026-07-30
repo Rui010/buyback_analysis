@@ -51,11 +51,28 @@ class TestToFloat:
     def test_string_float(self):
         assert _to_float("-47.72") == -47.72
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("23,000", 23000.0),
+            (" -1,234.5 ", -1234.5),
+            ("", None),
+            ("   ", None),
+            (None, None),
+            (42, 42.0),
+            (-12, -12.0),
+            (3.14, 3.14),
+        ],
+    )
+    def test_normalizes_metric_numeric_values(self, value, expected):
+        assert _to_float(value) == expected
+
     def test_none(self):
         assert _to_float(None) is None
 
     def test_invalid_string(self):
-        assert _to_float("abc") is None
+        with pytest.raises(ValueError, match="floatに変換できません"):
+            _to_float("abc")
 
 
 class TestToInt:
@@ -196,6 +213,46 @@ class TestDeduplicatePeriods:
 
 
 class TestPostForecastRevision:
+
+    def test_comma_separated_and_blank_numeric_fields_are_normalized_before_save(self):
+        session = MagicMock()
+        periods = [{
+            "period_type": "4q", "fiscal_year": 2026,
+            "consolidation_type": "consolidated", "metric_name": "sales",
+            "label_raw": "売上高", "prev_value": "23,000",
+            "prev_value_upper": " ", "curr_value": "28,000",
+            "curr_value_upper": "", "prev_year_actual": "24,900",
+        }]
+
+        assert post_forecast_revision(
+            session, _make_data(periods=periods), "1234", "https://example.com/comma.pdf",
+            "2026-07-28", "ok",
+        ) is True
+
+        metric = session.add.call_args_list[1][0][0]
+        assert metric.prev_value == 23000.0
+        assert metric.prev_value_upper is None
+        assert metric.curr_value == 28000.0
+        assert metric.curr_value_upper is None
+        assert metric.prev_year_actual == 24900.0
+        assert metric.change_pct == 19.6
+
+    def test_invalid_numeric_field_is_logged_and_rolls_back(self):
+        session = MagicMock()
+        periods = [{
+            "period_type": "4q", "fiscal_year": 2026,
+            "consolidation_type": "consolidated", "metric_name": "sales",
+            "label_raw": "売上高", "prev_value": "not-a-number", "curr_value": 100,
+        }]
+
+        result = post_forecast_revision(
+            session, _make_data(periods=periods), "1234", "https://example.com/invalid.pdf",
+            "2026-07-28", "ok",
+        )
+
+        assert result is False
+        session.rollback.assert_called_once()
+        assert not session.commit.called
 
     def test_normal_save(self):
         """detail 1件 + metric 1件が保存され、Trueを返す"""
