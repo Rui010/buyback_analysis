@@ -35,8 +35,8 @@ class TestGetTdnetForecastRevisionData:
             first_arg = mock_read.call_args[0][0]
             assert isinstance(first_arg, type(text("")))
 
-    def test_and_filter_both_keywords_required(self):
-        """「修正」AND「業績」の両方を含むタイトルのみ返す"""
+    def test_forecast_phrase_or_revision_keywords_are_included(self):
+        """「業績予想」または「修正」AND「業績」を含むタイトルを返す。"""
         engine = MagicMock()
         mock_df = _make_df([
             {"time": "10:00", "code": "1001", "name": "A社",
@@ -49,6 +49,11 @@ class TestGetTdnetForecastRevisionData:
              "title": "業績のお知らせ", "link": "url4", "date": "2026-06-18"},
             {"time": "10:00", "code": "1005", "name": "E社",
              "title": "連結業績予想修正のご報告", "link": "url5", "date": "2026-06-18"},
+            {"time": "10:00", "code": "1006", "name": "F社",
+             "title": "非連結決算への移行及び2026年６月期個別業績予想に関するお知らせ",
+             "link": "url6", "date": "2026-06-18"},
+            {"time": "10:00", "code": "1007", "name": "G社",
+             "title": "2027年３月期業績予想に関するお知らせ", "link": "url7", "date": "2026-06-18"},
         ])
 
         with patch(
@@ -57,8 +62,8 @@ class TestGetTdnetForecastRevisionData:
             mock_read.return_value = mock_df
             result = get_tdnet_forecast_revision_data(engine, "2026-06-13", "2026-06-18")
 
-        assert len(result) == 2
-        assert result["code"].tolist() == ["1001", "1005"]
+        assert len(result) == 4
+        assert result["code"].tolist() == ["1001", "1005", "1006", "1007"]
 
     def test_empty_result(self):
         """該当レコードがない場合は空のDataFrameを返す"""

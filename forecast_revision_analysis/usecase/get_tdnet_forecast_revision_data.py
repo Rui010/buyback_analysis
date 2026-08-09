@@ -70,8 +70,11 @@ def get_tdnet_forecast_revision_data(
                 params={"end_date": end_date, "start_date": start_date},
             )
         filtered_df = df[
-            df["title"].str.contains("修正", na=False)
-            & df["title"].str.contains("業績", na=False)
+            df["title"].str.contains("業績予想", na=False)
+            | (
+                df["title"].str.contains("修正", na=False)
+                & df["title"].str.contains("業績", na=False)
+            )
         ]
         return filtered_df
     except Exception as e:
