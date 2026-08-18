@@ -28,6 +28,7 @@
 | `305e001` | `main.py`: テキストパース失敗時にネイティブPDFでリトライするフォールバック処理追加 |
 | `a266e46` | `main.py`: `_needs_native_fallback()` ヘルパーと `REQUIRED_FIELDS` 定義追加 |
 | (未コミット) | `ir_type.md`: ToSTNeT-3実績文書を `buyback_completion` に分類するよう明示。複合文書（「取得及びToSTNeT-3」）は `buyback_announcement` とする旨も追記 |
+| (未コミット) | `main.py`: `REQUIRED_FIELDS` に `BUYBACK_ANNOUNCEMENT`（`buyback_shares`/`buyback_amount_yen`）・`BUYBACK_PROGRESS`（`cumulative_shares_acquired`/`cumulative_amount_spent_yen`）を追加。8508 Jトラストでpypdfのエンコード問題により数値フィールドが軒並みnullで保存され、announcement/progressはネイティブPDFフォールバック対象外だったため未検出だった（Issue C参照） |
 
 ### 生成済み作業ファイル（`logs/` に退避済み）
 
@@ -166,7 +167,7 @@ def _needs_native_fallback(obj, detect_type_enum):
 
 ### 残課題
 
-- `REQUIRED_FIELDS` は現在 `buyback_completion` のみ定義。他の種別も必要に応じて追加を検討。
+- ~~`REQUIRED_FIELDS` は現在 `buyback_completion` のみ定義。他の種別も必要に応じて追加を検討。~~ → 対応済み（`buyback_announcement`・`buyback_progress` を追加）。8508 Jトラストの全progress通知でこの未定義により数値フィールドがnullのまま保存されていたことが判明したため。
 - フォールバック後もパース失敗するケース（29件）は手動対応が必要。
 
 ---

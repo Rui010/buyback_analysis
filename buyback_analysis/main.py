@@ -37,6 +37,8 @@ USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
 
 REQUIRED_FIELDS = {
+    DetectType.BUYBACK_ANNOUNCEMENT: ["buyback_shares", "buyback_amount_yen"],
+    DetectType.BUYBACK_PROGRESS: ["cumulative_shares_acquired", "cumulative_amount_spent_yen"],
     DetectType.BUYBACK_COMPLETION: ["shares_acquired", "amount_spent_yen"],
     DetectType.RETIREMENT: ["retirement_date"],
     DetectType.CORRECTION: ["original_announcement_date"],
