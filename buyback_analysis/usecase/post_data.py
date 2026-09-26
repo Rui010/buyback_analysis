@@ -13,7 +13,7 @@ from buyback_analysis.consts.detect_type import DetectType
 logger = Logger()
 
 
-def post_data(session: Session, data: dict) -> None:
+def post_data(session: Session, data: dict) -> bool:
     """
     データをSQLiteデータベースに保存する関数
 
@@ -23,6 +23,10 @@ def post_data(session: Session, data: dict) -> None:
     Raises:
         ValueError: 必要な環境変数が設定されていない場合
         RuntimeError: データの保存に失敗した場合
+
+    Returns:
+        True: 保存に成功した場合
+        False: 一意制約違反により保存されなかった場合
     """
     # 必須フィールドの定義
     required_fields = {
@@ -62,10 +66,11 @@ def post_data(session: Session, data: dict) -> None:
 
         session.commit()
         logger.info("データが正常に保存されました")
+        return True
     except IntegrityError as e:
-        # 主キーエラーの場合はスキップして続行
         session.rollback()
-        logger.info(f"主キーエラーによりスキップしました: {e}")
+        logger.error(f"一意制約違反により保存されませんでした: {e}")
+        return False
     except Exception as e:
         session.rollback()
         logger.log_failed_data(data, str(e))

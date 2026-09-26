@@ -23,7 +23,7 @@ class TestPostDataValidation:
         }
 
         with pytest.raises(ValueError, match="disclosure_date"):
-            post_data(session, data)
+            assert post_data(session, data) is True
 
         assert session.rollback.called
 
@@ -48,7 +48,7 @@ class TestPostDataValidation:
             mock_mapper.mapper.column_attrs = []
             mock_inspect.return_value = mock_mapper
 
-            post_data(session, data)
+            assert post_data(session, data) is True
             # session.add()とsession.commit()が呼ばれることを確認
             assert session.add.called
             assert session.commit.called
@@ -78,8 +78,8 @@ class TestPostDataValidation:
             assert session.add.called
             assert session.commit.called
 
-    def test_post_data_integrity_error_handling(self):
-        """主キーエラーはスキップして続行"""
+    def test_post_data_integrity_error_returns_false(self):
+        """一意制約違反ではロールバックし、保存失敗を呼び出し側へ返す。"""
         session = MagicMock()
         session.commit.side_effect = IntegrityError("Duplicate key", None, None)
 
@@ -98,6 +98,5 @@ class TestPostDataValidation:
             mock_mapper.mapper.column_attrs = []
             mock_inspect.return_value = mock_mapper
 
-            # IntegrityErrorが発生してもエラーハンドリングされる
-            post_data(session, data)
+            assert post_data(session, data) is False
             session.rollback.assert_called()

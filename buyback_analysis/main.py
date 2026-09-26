@@ -60,7 +60,7 @@ def _needs_native_fallback(obj, detect_type_enum: DetectType) -> bool:
 
 def main():
     session = SessionLocal()
-    
+
     # 処理サマリー用カウンター
     total_processed = 0
     successful_saves = 0
@@ -68,11 +68,12 @@ def main():
     skipped_out_of_scope = 0
     failed_pdf = 0
     failed_parse = 0
-    
+    failed_integrity = 0
+
     try:
         init_db()  # DBの初期化
         postgresql_engine = get_database_engine()
-        
+
         # 開始日・終了日の決定
         if SYSTEM_START_DATE and SYSTEM_END_DATE:
             # 環境変数で明示的に指定された場合
@@ -85,7 +86,7 @@ def main():
             start_date = (today - datetime.timedelta(days=DAYS_BACK)).strftime("%Y-%m-%d")
             end_date = today.strftime("%Y-%m-%d")
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
-        
+
         if RERUN_URLS:
             logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
             for url in RERUN_URLS:
@@ -99,7 +100,7 @@ def main():
             )
 
         logger.info(f"取得対象レコード数: {len(df)}件")
-        
+
         for _, row in df.iterrows():
             total_processed += 1
 
@@ -241,11 +242,16 @@ def main():
             obj["data"]["url"] = row["link"]
             obj["data"]["disclosure_date"] = row["date"].strftime("%Y-%m-%d")
             try:
-                post_data(session, obj)
+                saved = post_data(session, obj)
             except Exception as e:
                 logger.error(f"データの保存に失敗しました: {row['link']} - {e}")
                 update_parse_status(session, row["link"], "failed")
                 failed_parse += 1
+                continue
+            if not saved:
+                logger.error(f"一意制約違反によりデータを保存できませんでした: {row['link']}")
+                update_parse_status(session, row["link"], "failed")
+                failed_integrity += 1
                 continue
             update_parse_status(session, row["link"], "saved")
             logger.info(f"データを保存しました: {row['code']} - {row['date']}")
@@ -260,14 +266,16 @@ def main():
         logger.info(f"  対象外スキップ:  {skipped_out_of_scope}件")
         logger.info(f"  PDF取得失敗:     {failed_pdf}件")
         logger.info(f"  パース/判定失敗: {failed_parse}件")
+        logger.info(f"  一意制約違反:    {failed_integrity}件")
         logger.info("=" * 60)
 
         summary = (
             f"総処理:{total_processed}件 / 保存:{successful_saves}件 / "
             f"重複スキップ:{skipped_duplicates}件 / 対象外:{skipped_out_of_scope}件 / "
-            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件"
+            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
+            f"一意制約違反:{failed_integrity}件"
         )
-        if failed_parse > 0 or failed_pdf > 0:
+        if failed_parse > 0 or failed_pdf > 0 or failed_integrity > 0:
             notify_error("buyback_analysis", summary)
         else:
             notify_success("buyback_analysis", summary)

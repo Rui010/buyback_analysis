@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Date, BigInteger, Enum
+from sqlalchemy import Column, String, BigInteger, Enum
 from buyback_analysis.models.base import Base
 import enum
 
@@ -12,10 +12,11 @@ class AnnouncementStatus(enum.Enum):
 class Announcement(Base):
     __tablename__ = "announcements"
 
-    code = Column(String, primary_key=True)
-    disclosure_date = Column(String, primary_key=True)
+    # 開示URLが1本のIRを一意に表す。code/date は検索用の属性として保持する。
+    url = Column(String, primary_key=True)
+    code = Column(String, nullable=False, index=True)
+    disclosure_date = Column(String, nullable=False, index=True)
     resolution_date = Column(String)
-    url = Column(String)
     company_name = Column(String)
     buyback_method = Column(String)
     share_type = Column(String)

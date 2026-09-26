@@ -4,33 +4,34 @@ from sqlalchemy import inspect
 from buyback_analysis.models.announcement import Announcement
 from buyback_analysis.models.completion import Completion
 from buyback_analysis.models.correction import Correction
+from buyback_analysis.models.progress import Progress
 from buyback_analysis.models.retirement import Retirement
 
 
 class TestAnnouncementModel:
-    """Announcementモデルのテスト（resolution_dateが複合主キーに含まれるかを確認）"""
+    """AnnouncementモデルのURL主キーと検索列を確認する。"""
 
     def test_announcement_primary_keys(self):
-        """Announcementの複合主キーが (code, disclosure_date) であることを確認"""
+        """Announcementの主キーはURLのみであることを確認"""
         mapper = inspect(Announcement)
         pk_columns = [col.name for col in mapper.primary_key]
 
-        assert len(pk_columns) == 2
-        assert "code" in pk_columns
-        assert "disclosure_date" in pk_columns
+        assert pk_columns == ["url"]
+        assert Announcement.code.nullable is False
+        assert Announcement.disclosure_date.nullable is False
+        assert Announcement.code.index is True
+        assert Announcement.disclosure_date.index is True
 
 
 class TestCompletionModel:
-    """Completionモデルのテスト（resolution_dateが複合主キーに含まれるかを確認）"""
+    """CompletionモデルのURL主キーを確認する。"""
 
     def test_completion_primary_keys(self):
-        """Completionの複合主キーが (code, disclosure_date) であることを確認"""
+        """Completionの主キーはURLのみであることを確認"""
         mapper = inspect(Completion)
         pk_columns = [col.name for col in mapper.primary_key]
 
-        assert len(pk_columns) == 2
-        assert "code" in pk_columns
-        assert "disclosure_date" in pk_columns
+        assert pk_columns == ["url"]
 
     def test_completion_column_types(self):
         """Completionの列の型が正しいことを確認"""
@@ -50,14 +51,22 @@ class TestRetirementModel:
     """Retirementモデルのテスト"""
 
     def test_retirement_primary_keys(self):
-        """Retirementの複合主キーが (code, disclosure_date, retirement_date) であることを確認"""
+        """Retirementの主キーはURLのみであることを確認"""
         mapper = inspect(Retirement)
         pk_columns = [col.name for col in mapper.primary_key]
 
-        assert len(pk_columns) == 3
-        assert "code" in pk_columns
-        assert "disclosure_date" in pk_columns
-        assert "retirement_date" in pk_columns
+        assert pk_columns == ["url"]
+        assert Retirement.code.nullable is False
+        assert Retirement.disclosure_date.nullable is False
+
+
+class TestProgressModel:
+    def test_progress_primary_key_is_url(self):
+        mapper = inspect(Progress)
+
+        assert [col.name for col in mapper.primary_key] == ["url"]
+        assert Progress.code.nullable is False
+        assert Progress.disclosure_date.nullable is False
 
     def test_retirement_columns(self):
         """Retirementの列が正しく定義されていることを確認"""
