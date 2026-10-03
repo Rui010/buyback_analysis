@@ -249,7 +249,7 @@ def main():
                 failed_parse += 1
                 continue
             if not saved:
-                logger.error(f"一意制約違反によりデータを保存できませんでした: {row['link']}")
+                logger.error(f"DB制約違反によりデータを保存できませんでした: {row['link']}")
                 update_parse_status(session, row["link"], "failed")
                 failed_integrity += 1
                 continue
@@ -266,14 +266,14 @@ def main():
         logger.info(f"  対象外スキップ:  {skipped_out_of_scope}件")
         logger.info(f"  PDF取得失敗:     {failed_pdf}件")
         logger.info(f"  パース/判定失敗: {failed_parse}件")
-        logger.info(f"  一意制約違反:    {failed_integrity}件")
+        logger.info(f"  制約違反:        {failed_integrity}件")
         logger.info("=" * 60)
 
         summary = (
             f"総処理:{total_processed}件 / 保存:{successful_saves}件 / "
             f"重複スキップ:{skipped_duplicates}件 / 対象外:{skipped_out_of_scope}件 / "
             f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
-            f"一意制約違反:{failed_integrity}件"
+            f"制約違反:{failed_integrity}件"
         )
         if failed_parse > 0 or failed_pdf > 0 or failed_integrity > 0:
             notify_error("buyback_analysis", summary)

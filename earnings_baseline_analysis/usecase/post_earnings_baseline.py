@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.llm_model import LlmModel
+from buyback_analysis.usecase.post_data import describe_integrity_error
 from earnings_baseline_analysis.models.earnings_baseline import EarningsBaseline
 from earnings_baseline_analysis.models.earnings_baseline_metric import EarningsBaselineMetric
 
@@ -158,7 +159,7 @@ def post_earnings_baseline(
         return True
     except IntegrityError as e:
         session.rollback()
-        logger.error(f"主キーエラーにより保存に失敗しました: {code} - {url} - {e}")
+        logger.error(f"{describe_integrity_error(e)}により保存に失敗しました: {code} - {url} - {e}")
         return False
     except Exception as e:
         session.rollback()

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError
 
-from buyback_analysis.usecase.post_data import post_data
+from buyback_analysis.usecase.post_data import post_data, describe_integrity_error
 from buyback_analysis.consts.detect_type import DetectType
 
 
@@ -100,3 +100,47 @@ class TestPostDataValidation:
 
             assert post_data(session, data) is False
             session.rollback.assert_called()
+
+
+class TestDescribeIntegrityError:
+    """IntegrityErrorの種類をログ用に判別する。"""
+
+    def test_not_null(self):
+        e = IntegrityError(
+            "INSERT ...", None,
+            Exception("NOT NULL constraint failed: retirements.retirement_date"),
+        )
+        assert describe_integrity_error(e) == "NOT NULL制約違反"
+
+    def test_unique(self):
+        e = IntegrityError(
+            "INSERT ...", None,
+            Exception("UNIQUE constraint failed: retirements.url"),
+        )
+        assert describe_integrity_error(e) == "一意制約違反"
+
+    def test_unknown(self):
+        e = IntegrityError("INSERT ...", None, Exception("FOREIGN KEY constraint failed"))
+        assert describe_integrity_error(e) == "制約違反"
+
+
+def test_post_data_logs_not_null_violation_distinctly():
+    """NOT NULL制約違反を「一意制約違反」と誤表示しない。"""
+    session = MagicMock()
+    session.commit.side_effect = IntegrityError(
+        "INSERT ...", None,
+        Exception("NOT NULL constraint failed: retirements.retirement_date"),
+    )
+    data = {
+        "type": "retirement",
+        "data": {"code": "641A", "disclosure_date": "2026-09-30", "retirement_date": None},
+    }
+
+    with patch("buyback_analysis.usecase.post_data.inspect") as mock_inspect, \
+            patch("buyback_analysis.usecase.post_data.logger") as mock_logger:
+        mock_inspect.return_value.mapper.column_attrs = []
+        assert post_data(session, data) is False
+
+    message = mock_logger.error.call_args.args[0]
+    assert "NOT NULL制約違反" in message
+    assert "一意制約違反" not in message

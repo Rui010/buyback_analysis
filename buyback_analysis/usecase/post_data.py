@@ -13,6 +13,16 @@ from buyback_analysis.consts.detect_type import DetectType
 logger = Logger()
 
 
+def describe_integrity_error(e: IntegrityError) -> str:
+    """IntegrityErrorの種類をログ表示用の文言に変換する（NOT NULL違反を一意制約違反と誤表示しないため）。"""
+    message = str(e.orig)
+    if "NOT NULL constraint failed" in message:
+        return "NOT NULL制約違反"
+    if "UNIQUE constraint failed" in message:
+        return "一意制約違反"
+    return "制約違反"
+
+
 def post_data(session: Session, data: dict) -> bool:
     """
     データをSQLiteデータベースに保存する関数
@@ -26,7 +36,7 @@ def post_data(session: Session, data: dict) -> bool:
 
     Returns:
         True: 保存に成功した場合
-        False: 一意制約違反により保存されなかった場合
+        False: DB制約違反（一意制約・NOT NULL制約など）により保存されなかった場合
     """
     # 必須フィールドの定義
     required_fields = {
@@ -69,7 +79,7 @@ def post_data(session: Session, data: dict) -> bool:
         return True
     except IntegrityError as e:
         session.rollback()
-        logger.error(f"一意制約違反により保存されませんでした: {e}")
+        logger.error(f"{describe_integrity_error(e)}により保存されませんでした: {e}")
         return False
     except Exception as e:
         session.rollback()

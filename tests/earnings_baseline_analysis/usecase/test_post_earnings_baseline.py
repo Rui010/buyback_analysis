@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError
 
 from earnings_baseline_analysis.usecase.post_earnings_baseline import (
@@ -329,3 +329,27 @@ class TestPostEarningsBaseline:
         )
         baseline = session.add.call_args_list[0][0][0]
         assert baseline.extraction_status == status
+
+
+def test_unique_violation_is_logged_as_unique_not_primary_key():
+    """自然キー（UNIQUE制約）衝突を「主キーエラー」と誤表示しない。"""
+    session = MagicMock()
+    session.commit.side_effect = IntegrityError(
+        "INSERT ...", None,
+        Exception("UNIQUE constraint failed: earnings_baseline_metrics.code, earnings_baseline_metrics.fiscal_year"),
+    )
+
+    with patch("earnings_baseline_analysis.usecase.post_earnings_baseline.logger") as mock_logger:
+        result = post_earnings_baseline(
+            session=session,
+            data=_make_data(),
+            code="9444",
+            url="https://example.com/ir.pdf",
+            disclosure_date="2026-09-24",
+            extraction_status="ok",
+        )
+
+    assert result is False
+    message = mock_logger.error.call_args.args[0]
+    assert "一意制約違反" in message
+    assert "主キーエラー" not in message

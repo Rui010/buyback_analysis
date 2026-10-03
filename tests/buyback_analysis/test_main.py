@@ -47,4 +47,5 @@ def test_integrity_conflict_is_not_counted_as_saved_and_notifies(monkeypatch):
     update_parse_status.assert_called_once_with(
         session, "https://example.test/140120260924539668.pdf", "failed"
     )
-    assert "一意制約違反:1件" in notify_error.call_args.args[1]
+    assert "制約違反:1件" in notify_error.call_args.args[1]
+    assert "一意制約違反" not in notify_error.call_args.args[1]
