@@ -1,6 +1,6 @@
 import json
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError
 
 from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _calc_change_pct, _to_float, _to_int, _deduplicate_periods
@@ -648,3 +648,27 @@ class TestCheckMissingFields:
         assert check_missing_fields(
             _make_data(periods=[]), "5803", "https://example.com/ir.pdf"
         ) is False
+
+
+def test_unique_violation_is_logged_as_unique_not_primary_key():
+    """自然キー（UNIQUE制約）衝突を「主キーエラー」と誤表示しない。"""
+    session = MagicMock()
+    session.commit.side_effect = IntegrityError(
+        "INSERT ...", None,
+        Exception("UNIQUE constraint failed: forecast_revision_metrics.url, forecast_revision_metrics.period_type"),
+    )
+
+    with patch("forecast_revision_analysis.usecase.post_forecast_revision.logger") as mock_logger:
+        result = post_forecast_revision(
+            session=session,
+            data=_make_data(),
+            code="5803",
+            url="https://example.com/ir.pdf",
+            disclosure_date="2026-06-18",
+            extraction_status="ok",
+        )
+
+    assert result is False
+    message = mock_logger.error.call_args.args[0]
+    assert "一意制約違反" in message
+    assert "主キーエラー" not in message

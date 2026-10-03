@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.llm_model import LlmModel
+from buyback_analysis.usecase.post_data import describe_integrity_error
 from forecast_revision_analysis.models.forecast_revision_detail import ForecastRevisionDetail
 from forecast_revision_analysis.models.forecast_revision_metric import ForecastRevisionMetric
 
@@ -226,7 +227,7 @@ def post_forecast_revision(
         # periods内の自然キー重複（例: metric_nameの正規化で複数指標が同じキーに丸められた）
         # のような実データ上の問題である。Falseを返し、呼び出し元に「保存失敗」として
         # 検知・カウントさせる（詳細はdocs/forecast_revision_llm_pipeline_redesign.md参照）。
-        logger.error(f"主キーエラーにより保存に失敗しました: {code} - {url} - {e}")
+        logger.error(f"{describe_integrity_error(e)}により保存に失敗しました: {code} - {url} - {e}")
         return False
     except Exception as e:
         session.rollback()
