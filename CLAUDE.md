@@ -173,7 +173,7 @@ forecast_revision_analysis/
 3. `midterm_plans`テーブルの主キー（`code` + `url`）で重複チェック → 処理済みならスキップ
 4. `buyback_analysis/prompts/midterm_plan.md` を使い**Gemini**でJSON抽出（定量目標`metrics`）
 5. `MIDTERM_EXTRACT_KEYWORDS=true` の場合、`metrics`抽出とは別のLLMコールで`buyback_analysis/prompts/midterm_keywords.md`を使い戦略テーマ・重点施策のキーワードを`responseSchema`（`MidtermKeywordExtraction`）で抽出し、`midterm_plan_keywords`テーブルに1キーワード1行で保存する（`metrics`抽出が失敗した場合はキーワード抽出も行わない）
-6. 抽出結果（計画名・開始/終了年度・定量目標一覧）を**SQLite**の`midterm_plans`テーブルに保存
+6. 抽出結果（計画名・開始/終了年度・定量目標一覧）を**SQLite**の`midterm_plans`テーブルに保存。`post_midterm_plan()`は`extraction_status`の前後空白を除去し、許可値（`ok`/`failed`/`withdrawn`/`no_targets`/`postponed`/`skipped`）以外は保存しない。保存結果を`bool`で返し、`main.py`は`True`のときのみ「正常保存」、`False`（`database is locked`等）は「保存失敗」として完了通知のサマリーに件数を含める
 7. **`backfill_keywords.py`（別エントリーポイント）**: `MIDTERM_EXTRACT_KEYWORDS`を後から有効化した場合など、既に`midterm_plans`に保存済み（`extraction_status=ok`）だが`midterm_plan_keywords`が未保存の行にキーワード抽出だけを追加実行する。`main.py`は`_already_exists()`で処理済みURLを丸ごとスキップするため、通常のパイプラインでは過去データにキーワードが後付けされない。`get_midterm_plans_missing_keywords()`で開示日が新しい順に`MIDTERM_BACKFILL_KEYWORDS_LIMIT`件（デフォルト50件）を取得し、`get_tdnet_midterm_data_by_urls()`でPostgreSQLから`title`/`name`を引き直し（`midterm_plans`には保存されていないため）、PDFを再取得してキーワード抽出のみ実行する（`metrics`の再抽出は行わない）。処理済みの行は次回呼び出し時に自動的に対象から外れるため、同じコマンドを繰り返し実行するだけで続きから再開できる
 
 ## テスト方針

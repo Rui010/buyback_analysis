@@ -113,3 +113,90 @@ class TestPostMidtermPlan:
         )
         instance = session.add.call_args[0][0]
         assert instance.extraction_status == status
+
+    @pytest.mark.parametrize("status", ["ok", "failed", "withdrawn", "no_targets", "postponed", "skipped"])
+    def test_returns_true_on_success(self, status):
+        """許可された値で保存に成功するとTrueを返す"""
+        session = MagicMock()
+        result = post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status=status,
+        )
+        assert result is True
+
+    def test_returns_false_on_none_data(self):
+        """dataがNoneの場合はFalseを返す"""
+        session = MagicMock()
+        result = post_midterm_plan(
+            session=session,
+            data=None,
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status="failed",
+        )
+        assert result is False
+
+    def test_returns_false_on_integrity_error(self):
+        """主キー重複の場合はFalseを返す"""
+        session = MagicMock()
+        session.commit.side_effect = IntegrityError("Duplicate key", None, None)
+        result = post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status="ok",
+        )
+        assert result is False
+
+    def test_returns_false_on_unexpected_error(self):
+        """database is locked などの保存失敗はFalseを返す"""
+        session = MagicMock()
+        session.commit.side_effect = Exception("database is locked")
+        result = post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status="ok",
+        )
+        assert result is False
+
+    @pytest.mark.parametrize("raw", ["no_targets ", " ok", "\tpostponed\n"])
+    def test_extraction_status_is_stripped(self, raw):
+        """extraction_statusの前後の空白は除去して保存する"""
+        session = MagicMock()
+        result = post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status=raw,
+        )
+        instance = session.add.call_args[0][0]
+        assert instance.extraction_status == raw.strip()
+        assert result is True
+
+    @pytest.mark.parametrize("status", ["unknown", "OK", "", None])
+    def test_invalid_extraction_status_is_rejected(self, status):
+        """許可されていないextraction_statusは保存せずFalseを返す"""
+        session = MagicMock()
+        result = post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status=status,
+        )
+        assert result is False
+        assert not session.add.called
+        assert not session.commit.called
