@@ -21,6 +21,12 @@ STAGE1_TEMPERATURE = 0.0
 LEAD_TEXT_MAX_CHARS = 1000
 
 
+def _check_http_response(response):
+    """SDKのuploadがfileキーを読む前に、HTTPエラーをAPIErrorへ変換する。"""
+    if response.status_code >= 400:
+        APIError.raise_for_response(response)
+
+
 def _extract_lead_text(pdf_path: str, max_chars: int = LEAD_TEXT_MAX_CHARS) -> str:
     """
     PDF1ページ目冒頭のテキストを抽出する。
@@ -68,7 +74,9 @@ def extract_forecast_revision_stage1_native(
     for attempt in range(1, max_retries + 1):
         pdf_file = None
         try:
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=api_key, http_options={
+                "client_args": {"event_hooks": {"response": [_check_http_response]}},
+            })
 
             pdf_file = client.files.upload(
                 file=pdf_path,
@@ -103,8 +111,8 @@ def extract_forecast_revision_stage1_native(
                     logger.error(f"[Stage1] リトライ回数を超えました: {e}")
                     raise SystemExit("Gemini APIのサーバエラーにより、プログラムを終了します。") from e
             else:
-                logger.error(f"[Stage1] Gemini APIの制限に達しました: {e}")
-                raise SystemExit("Gemini APIの制限に達したため、プログラムを終了します。")
+                logger.error(f"[Stage1] Gemini APIエラー HTTP {e.code} code={code}: {e}")
+                raise SystemExit(f"Gemini APIエラー HTTP {e.code} により、プログラムを終了します。") from e
 
         except json.JSONDecodeError as e:
             logger.error(f"[Stage1][JSON ERROR] パース失敗 (attempt {attempt}/{max_retries}): {e}")

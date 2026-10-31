@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("LOG_FILE", "forecast_revision_analysis.log")
 
 import datetime
+import pandas as pd
 from dotenv import load_dotenv
 
 from buyback_analysis.interface.postgresql_engine import get_database_engine
@@ -23,6 +24,7 @@ from forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native 
 from forecast_revision_analysis.usecase.build_stage2_context import build_stage2_context
 from forecast_revision_analysis.usecase.infer_forecast_revision_stage2 import infer_forecast_revision_stage2
 from forecast_revision_analysis.usecase.merge_stage_results import merge_stage_results
+from forecast_revision_analysis.usecase.retry_failed import already_processed, get_failed_urls
 
 load_dotenv()
 
@@ -44,7 +46,7 @@ logger = Logger()
 
 
 def _already_exists(session, code: str, url: str) -> bool:
-    return session.get(ForecastRevisionDetail, {"code": code, "url": url}) is not None
+    return already_processed(session, code, url)
 
 
 def _determine_extraction_status(obj: dict | None) -> str:
@@ -84,6 +86,8 @@ def main():
     failed_pdf = 0
     failed_parse = 0
     missing_fields_count = 0
+    missing_details = []
+    failed_saves = 0
 
     try:
         init_db()
@@ -112,6 +116,13 @@ def main():
                 start_date=start_date,
                 end_date=end_date,
             )
+            failed_urls = get_failed_urls(session)
+            if failed_urls:
+                retry_df = get_tdnet_forecast_revision_data_by_urls(
+                    engine=postgresql_engine, urls=failed_urls,
+                )
+                logger.info(f"failed再試行候補: {len(failed_urls)}件 / TDnet取得: {len(retry_df)}件")
+                df = pd.concat([df, retry_df], ignore_index=True).drop_duplicates(subset=["code", "link"])
         logger.info(f"取得対象レコード数: {len(df)}件")
 
         for _, row in df.iterrows():
@@ -149,10 +160,14 @@ def main():
                 )
                 if pdf_path is None:
                     logger.error(f"PDFの取得に失敗しました: {url}")
-                    post_forecast_revision(
+                    saved = post_forecast_revision(
                         session=session, data={}, code=code, url=url,
                         disclosure_date=disclosure_date, extraction_status="failed",
                     )
+                    if saved:
+                        failed_saves += 1
+                    else:
+                        logger.error(f"failed状態の保存失敗: {code} - {url}")
                     failed_pdf += 1
                     continue
                 obj = _run_stage1_and_stage2(title=title, content=None, pdf_path=pdf_path, code=code, name=name)
@@ -164,15 +179,19 @@ def main():
                 )
                 if content is None:
                     logger.error(f"PDFの取得に失敗しました: {url}")
-                    post_forecast_revision(
+                    saved = post_forecast_revision(
                         session=session, data={}, code=code, url=url,
                         disclosure_date=disclosure_date, extraction_status="failed",
                     )
+                    if saved:
+                        failed_saves += 1
+                    else:
+                        logger.error(f"failed状態の保存失敗: {code} - {url}")
                     failed_pdf += 1
                     continue
                 obj = _run_stage1_and_stage2(title=title, content=content, pdf_path=None, code=code, name=name)
 
-            if any(kw in title for kw in CORRECTION_KEYWORDS):
+            if obj is not None and any(kw in title for kw in CORRECTION_KEYWORDS):
                 extraction_status = "correction"
             else:
                 extraction_status = _determine_extraction_status(obj)
@@ -191,25 +210,18 @@ def main():
             )
             if saved:
                 logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
-                successful_saves += 1
-                if extraction_status == "ok" and check_missing_fields(obj or {}, code, url):
+                if extraction_status == "failed":
+                    failed_saves += 1
+                else:
+                    successful_saves += 1
+                if extraction_status == "ok" and check_missing_fields(obj or {}, code, url, details=missing_details):
                     missing_fields_count += 1
             else:
                 logger.error(f"保存失敗: {code} - {title}")
                 failed_parse += 1
 
-        logger.info("=" * 60)
-        logger.info("【処理サマリー】")
-        logger.info(f"  総処理件数:      {total_processed}件")
-        logger.info(f"  正常保存:        {successful_saves}件")
-        logger.info(f"  重複スキップ:    {skipped_duplicates}件")
-        logger.info(f"  PDF取得失敗:     {failed_pdf}件")
-        logger.info(f"  パース/判定失敗: {failed_parse}件")
-        logger.info(f"  欠損データ:      {missing_fields_count}件")
-        logger.info("=" * 60)
-
         summary = (
-            f"総処理:{total_processed}件 / 保存:{successful_saves}件 / "
+            f"総処理:{total_processed}件 / 保存（failed除外）:{successful_saves}件 / failed保存:{failed_saves}件 / "
             f"重複スキップ:{skipped_duplicates}件 / "
             f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
             f"欠損データ:{missing_fields_count}件"
@@ -226,7 +238,21 @@ def main():
         raise
 
     finally:
-        session.close()
+        try:
+            logger.info("=" * 60)
+            logger.info("【処理サマリー】")
+            logger.info(f"  総処理件数:      {total_processed}件")
+            logger.info(f"  保存（failed除外）:        {successful_saves}件")
+            logger.info(f"  重複スキップ:    {skipped_duplicates}件")
+            logger.info(f"  PDF取得失敗:     {failed_pdf}件")
+            logger.info(f"  パース/判定失敗: {failed_parse}件")
+            logger.info(f"  欠損データ:      {missing_fields_count}件")
+            logger.info(f"  failed状態の保存: {failed_saves}件")
+            for detail in missing_details:
+                logger.info(f"  [欠損内訳] {detail}")
+            logger.info("=" * 60)
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":

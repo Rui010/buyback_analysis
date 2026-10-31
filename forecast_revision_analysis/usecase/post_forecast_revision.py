@@ -117,7 +117,7 @@ def _deduplicate_periods(periods: list, code: str, url: str) -> list:
     return list(kept.values())
 
 
-def check_missing_fields(data: dict, code: str, url: str) -> bool:
+def check_missing_fields(data: dict, code: str, url: str, details: list[str] | None = None) -> bool:
     """
     extraction_status=ok のレコードに対して重要フィールドの欠損をチェックする。
 
@@ -128,14 +128,19 @@ def check_missing_fields(data: dict, code: str, url: str) -> bool:
     inner = data.get("data", {})
     has_missing = False
 
+    def record(message):
+        logger.info(message)
+        if details is not None:
+            details.append(message)
+
     if inner.get("prev_forecast_date") is None:
-        logger.info(f"[MISSING] field=prev_forecast_date code={code} url={url}")
+        record(f"[MISSING] field=prev_forecast_date code={code} url={url}")
         has_missing = True
 
     for i, period in enumerate(inner.get("periods", [])):
         for field in _PERIOD_REQUIRED_FIELDS:
             if period.get(field) is None:
-                logger.info(
+                record(
                     f"[MISSING] field=periods[{i}].{field}"
                     f" period_type={period.get('period_type')}"
                     f" code={code} url={url}"
@@ -189,6 +194,17 @@ def post_forecast_revision(
     )
 
     try:
+        # 再抽出が完了してからfailedだけを同一トランザクションで置換する。
+        # INSERT失敗時はrollbackにより元の失敗記録も復元される。
+        replaced = session.query(ForecastRevisionDetail).filter(
+            ForecastRevisionDetail.code == code,
+            ForecastRevisionDetail.url == url,
+            ForecastRevisionDetail.extraction_status == "failed",
+        ).delete(synchronize_session="fetch")
+        if replaced == 1:
+            session.query(ForecastRevisionMetric).filter(
+                ForecastRevisionMetric.url == url,
+            ).delete(synchronize_session="fetch")
         session.add(detail)
         session.flush()
 
