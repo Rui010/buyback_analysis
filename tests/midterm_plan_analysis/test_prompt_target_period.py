@@ -24,3 +24,26 @@ def test_midterm_plan_prompt_preserves_target_year_and_limits_normalization(file
     assert "資料に記載された年の数字をそのまま" in prompt
     assert "決算月だけを根拠に" in prompt
     assert "3カ年累計" in prompt
+
+
+@pytest.mark.parametrize("filename", ["midterm_plan.md", "midterm_plan_native.md"])
+def test_midterm_plan_prompt_excludes_non_midterm_targets(filename):
+    prompt = (PROMPT_DIR / filename).read_text(encoding="utf-8")
+
+    assert "単年度の業績予想" in prompt
+    assert "業績予想の修正" in prompt
+    assert "役員報酬" in prompt
+    assert "質疑応答" in prompt
+    assert "外部統計" in prompt
+    assert "市場予測" in prompt
+
+
+@pytest.mark.parametrize("filename", ["midterm_plan.md", "midterm_plan_native.md"])
+def test_midterm_plan_prompt_handles_corrections_and_long_term_targets(filename):
+    prompt = (PROMPT_DIR / filename).read_text(encoding="utf-8")
+
+    assert "訂正後の目標値" in prompt
+    assert "訂正前の値" in prompt
+    assert "長期ビジョン" in prompt
+    assert "計画期間内" in prompt
+    assert '"metrics": []' in prompt
