@@ -15,6 +15,10 @@ class TestPostMidtermPlan:
                 "plan_name": "2027中期経営計画",
                 "plan_start_year": 2025,
                 "plan_end_year": 2027,
+                "plan_start_period_label": "2025年度",
+                "plan_end_period_label": "2027年度",
+                "plan_start_fiscal_end": "2026/03",
+                "plan_end_fiscal_end": "2028/03",
                 "metrics": metrics or [
                     {"name": "売上高", "value": 500, "unit": "億円", "target_year": 2027}
                 ],
@@ -52,6 +56,24 @@ class TestPostMidtermPlan:
         instance = session.add.call_args[0][0]
         parsed = json.loads(instance.metrics)
         assert parsed == metrics
+
+    def test_plan_period_fields_are_saved(self):
+        session = MagicMock()
+
+        post_midterm_plan(
+            session=session,
+            data=self._make_data(),
+            code="1234",
+            url="https://example.com/plan.pdf",
+            disclosure_date="2025-04-18",
+            extraction_status="ok",
+        )
+
+        instance = session.add.call_args[0][0]
+        assert instance.plan_start_period_label == "2025年度"
+        assert instance.plan_end_period_label == "2027年度"
+        assert instance.plan_start_fiscal_end == "2026/03"
+        assert instance.plan_end_fiscal_end == "2028/03"
 
     def test_none_data_does_not_save(self):
         """dataがNoneの場合は保存しない"""

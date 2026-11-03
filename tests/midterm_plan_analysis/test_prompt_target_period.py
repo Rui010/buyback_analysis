@@ -47,3 +47,15 @@ def test_midterm_plan_prompt_handles_corrections_and_long_term_targets(filename)
     assert "長期ビジョン" in prompt
     assert "計画期間内" in prompt
     assert '"metrics": []' in prompt
+
+
+@pytest.mark.parametrize("filename", ["midterm_plan.md", "midterm_plan_native.md"])
+def test_midterm_plan_prompt_defines_plan_period_fields(filename):
+    prompt = (PROMPT_DIR / filename).read_text(encoding="utf-8")
+
+    assert '"plan_start_period_label"' in prompt
+    assert '"plan_end_period_label"' in prompt
+    assert '"plan_start_fiscal_end"' in prompt
+    assert '"plan_end_fiscal_end"' in prompt
+    assert "開始・終了の片方だけ" in prompt
+    assert "計画名や目標年度から推測" in prompt

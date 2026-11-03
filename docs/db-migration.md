@@ -42,3 +42,20 @@ SQLiteは既存テーブルの主キーをALTERできないため、以下で移
 あわせて旧DBの `is_checked` に `parse_status` がない場合は、既存行を `saved` として
 同列を追加し、URL一意索引 `uq_is_checked_url` を作成する。これも現行パイプラインが
 前提とする既存モデルとの整合化であり、URL重複が検出された場合は変更せず停止する。
+
+## 2026-11-03: 中期経営計画の計画期間表記
+
+`midterm_plans` に次のnullable文字列カラムを追加する。
+
+- `plan_start_period_label`
+- `plan_end_period_label`
+- `plan_start_fiscal_end`
+- `plan_end_fiscal_end`
+
+既存SQLiteへは次を1回実行する。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\migrate_midterm_plan_period_fields.py
+```
+
+実行前にSQLiteオンラインバックアップを同じディレクトリへ自動作成する。不足列だけを追加する再実行可能な処理で、既存行を変更せず、過去データのバックフィルも行わない。

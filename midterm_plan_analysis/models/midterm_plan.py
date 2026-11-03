@@ -10,6 +10,10 @@ class MidtermPlan(Base):
     plan_name = Column(String, nullable=True)
     plan_start_year = Column(Integer, nullable=True)
     plan_end_year = Column(Integer, nullable=True)
+    plan_start_period_label = Column(String, nullable=True)
+    plan_end_period_label = Column(String, nullable=True)
+    plan_start_fiscal_end = Column(String, nullable=True)
+    plan_end_fiscal_end = Column(String, nullable=True)
     disclosure_date = Column(String, nullable=True)
     metrics = Column(Text, nullable=True)  # JSON文字列
     extraction_status = Column(String, nullable=True)  # ok / failed / withdrawn / no_targets / postponed / skipped

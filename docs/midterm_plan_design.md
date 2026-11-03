@@ -21,6 +21,10 @@ midterm_plans
 ├── plan_name        # 計画名（例: "2025中期経営計画"）
 ├── plan_start_year  # 計画開始年度
 ├── plan_end_year    # 計画終了年度（目標年度）
+├── plan_start_period_label # 計画開始期間の原文表記
+├── plan_end_period_label   # 計画終了期間の原文表記
+├── plan_start_fiscal_end   # 計画開始期間の決算期末（YYYY/MM）
+├── plan_end_fiscal_end     # 計画終了期間の決算期末（YYYY/MM）
 ├── disclosure_date  # 開示日
 └── metrics          # 経営指標（JSON文字列）
 ```
@@ -37,7 +41,9 @@ midterm_plans
 
 指標名・単位・数値が企業ごとに異なるため、まず **JSONカラムで生データを保存** し、後から正規化する方針とする。
 
-`target_year` は資料に記載された年の数字を保持する。`target_period_label` は期間表記の原文、`target_fiscal_end` は資料内の定義や対応表記から根拠を持って特定できる決算期末（`YYYY/MM`）とする。決算月だけでは年度との対応を断定せず、不明時は `null` とする。既存テーブルへの列追加や過去データのバックフィルは行わない。
+`target_year` は資料に記載された年の数字を保持する。`target_period_label` は期間表記の原文、`target_fiscal_end` は資料内の定義や対応表記から根拠を持って特定できる決算期末（`YYYY/MM`）とする。決算月だけでは年度との対応を断定せず、不明時は `null` とする。これらは `metrics` JSON内のフィールドであり、過去データのバックフィルは行わない。
+
+計画期間も同じ原則とする。`plan_start_year` / `plan_end_year` は資料に記載された年を保持し、`plan_start_period_label` / `plan_end_period_label` は開始・終了の原文表記、`plan_start_fiscal_end` / `plan_end_fiscal_end` は資料内の根拠から特定できる決算期末とする。計画名や目標年度、企業の決算月だけからは推測しない。開始・終了の片方だけが明示されている場合は、分かる側だけを保存する。
 
 ---
 
@@ -50,7 +56,12 @@ midterm_plans
   "type": "MIDTERM_PLAN",
   "data": {
     "plan_name": "2025中期経営計画",
+    "plan_start_year": 2023,
     "plan_end_year": 2025,
+    "plan_start_period_label": "2023年度",
+    "plan_end_period_label": "2025年度",
+    "plan_start_fiscal_end": null,
+    "plan_end_fiscal_end": null,
     "metrics": [
       {"name": "売上高", "value": 500, "unit": "億円", "target_year": 2025, "target_period_label": "2025年度", "target_fiscal_end": null}
     ]
@@ -69,6 +80,16 @@ midterm_plans
 - 計画期間外の長期目標、または対象年度が不明な長期ビジョンの数値
 
 訂正資料で目標値そのものの訂正後の値が明示されている場合だけ、訂正後の値を抽出する。抽出対象がなければ `metrics` は空配列とし、既存パイプラインの分類処理によって `no_targets` 等を決定する。テキスト方式とネイティブPDF方式で同じ境界を適用する。
+
+### 既存SQLiteの移行
+
+`Base.metadata.create_all()` は既存テーブルへ列を追加しないため、既存SQLiteでは次を1回実行する。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\migrate_midterm_plan_period_fields.py
+```
+
+スクリプトは移行前にSQLiteオンラインバックアップ（`<DB名>.bak-plan-period-<日時>`）を同じディレクトリへ作成し、不足している4列だけを追加する。既存行は保持し、再実行時は追加済みの列をスキップする。過去データの再抽出・バックフィルは行わない。
 
 ---
 
