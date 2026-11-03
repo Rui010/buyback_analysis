@@ -29,13 +29,15 @@ midterm_plans
 
 ```json
 [
-  {"name": "売上高", "value": 500, "unit": "億円", "target_year": 2025},
-  {"name": "営業利益率", "value": 10, "unit": "%", "target_year": 2025},
-  {"name": "ROE", "value": 12, "unit": "%", "target_year": 2025}
+  {"name": "売上高", "value": 500, "unit": "億円", "target_year": 2030, "target_period_label": "2030年度", "target_fiscal_end": null},
+  {"name": "営業利益率", "value": 10, "unit": "%", "target_year": 2031, "target_period_label": "2031年3月期", "target_fiscal_end": "2031/03"},
+  {"name": "ROE", "value": 12, "unit": "%", "target_year": 2030, "target_period_label": "FY2030", "target_fiscal_end": null}
 ]
 ```
 
 指標名・単位・数値が企業ごとに異なるため、まず **JSONカラムで生データを保存** し、後から正規化する方針とする。
+
+`target_year` は資料に記載された年の数字を保持する。`target_period_label` は期間表記の原文、`target_fiscal_end` は資料内の定義や対応表記から根拠を持って特定できる決算期末（`YYYY/MM`）とする。決算月だけでは年度との対応を断定せず、不明時は `null` とする。既存テーブルへの列追加や過去データのバックフィルは行わない。
 
 ---
 
@@ -50,7 +52,7 @@ midterm_plans
     "plan_name": "2025中期経営計画",
     "plan_end_year": 2025,
     "metrics": [
-      {"name": "売上高", "value": 500, "unit": "億円", "target_year": 2025}
+      {"name": "売上高", "value": 500, "unit": "億円", "target_year": 2025, "target_period_label": "2025年度", "target_fiscal_end": null}
     ]
   }
 }
