@@ -15,7 +15,8 @@ def post_midterm_keywords(
     url: str,
     disclosure_date: str,
     keywords: Optional[List[Dict[str, Any]]],
-) -> None:
+    commit: bool = True,
+) -> bool:
     """
     中期経営計画のキーワードを1キーワード1行としてSQLiteに保存する。
 
@@ -25,9 +26,15 @@ def post_midterm_keywords(
     LLMが同一文書内で同じkeyword（完全一致）を重複して返す場合があるため、
     UniqueConstraint(code, url, keyword)違反でこの文書のキーワードが全件ロールバックされる
     ことがないよう、保存前にkeyword単位で重複除去する（先勝ち）。
+
+    commit=Falseならcommitせずflushだけ行い、失敗時のrollbackも呼び出し側に任せる
+    （採用版切替のトランザクションに含めるため）。
+
+    Returns:
+        保存した（または保存対象がなかった）場合 True。保存に失敗した場合 False。
     """
     if not keywords:
-        return
+        return True
 
     deduped: Dict[str, Dict[str, Any]] = {}
     for kw in keywords:
@@ -45,11 +52,16 @@ def post_midterm_keywords(
         )
 
     try:
-        session.commit()
+        session.commit() if commit else session.flush()
         logger.info(f"中期経営計画のキーワードを保存しました: {code} - {url} ({len(deduped)}件)")
+        return True
     except IntegrityError:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.info(f"主キーエラーによりスキップしました: {code} - {url}")
+        return False
     except Exception as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.error(f"キーワードの保存に失敗しました: {code} - {url} - {e}")
+        return False

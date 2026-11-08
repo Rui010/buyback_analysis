@@ -1,10 +1,10 @@
-# TDnet原典hash・processing run記録（Step 1）
+# TDnet原典hash・processing run記録・結果version（Step 1・2）
 
 仕様: [docs/upstream/tdnet-provenance/buyback-analysis-tdnet-provenance.md](upstream/tdnet-provenance/buyback-analysis-tdnet-provenance.md)（契約版 `tdnet-provenance-v1`）。本書は仕様に対する本リポジトリ側の実装判断だけを記す。
 
 ## 有効化
 
-`TDNET_PROVENANCE_ENABLED=true` のときだけ、中計（`main.py`・`backfill_keywords.py`）と会社予想修正（`main.py`）が台帳照合とrun記録を行う。省略時（`false`）は従来どおりに動き、新しいテーブルにも触れない。
+`TDNET_PROVENANCE_ENABLED=true` のときだけ、中計（`main.py`・`backfill_keywords.py`）と会社予想修正（`main.py`）が台帳照合・run記録・結果versionの保存を行う。省略時（`false`）は従来どおりに動き、新しいテーブルにも触れない。ただし `RERUN_URLS` は旧結果を版として残すため有効時だけ使え、無効時に指定すると起動時に停止する。
 
 有効化の前提:
 
@@ -14,10 +14,12 @@
 
 ## テーブル
 
-`tdnet_provenance/models/` の2テーブルは専用の `ProvenanceBase` に登録しており、`init_db()`（`Base.metadata.create_all()`）では作成されない。作成はmigrationスクリプトだけが行う。
+`tdnet_provenance/models/` の4テーブルは専用の `ProvenanceBase` に登録しており、`init_db()`（`Base.metadata.create_all()`）では作成されない。作成はmigrationスクリプトだけが行う。
 
 - `tdnet_source_documents`（運用原典台帳）: URLごとに1行。初回処理時に登録し、以後は更新・削除しない
-- `processing_runs`: 開始したstageごとに終了時に1行INSERTする。token・費用・retry/reuse列はStep 3用で、後から列を追加しないためにNULL許容で先に用意している
+- `processing_runs`: 開始したstageごとに終了時に1行INSERTする。token・費用・reuse列はStep 3用で、後から列を追加しないためにNULL許容で先に用意している
+- `result_versions`: 1文書の抽出結果1回分。現行結果テーブルに書いた行そのものをJSON（`payload`）で持ち、作ったrunのIDを `run_ids` に持つ。更新・削除しない
+- `result_adoptions`: 採用の追記記録。URL・result_typeごとに最新の行が現在の採用版で、次の行の `adopted_at` までがその版の採用期間
 
 ## 処理順序
 
@@ -37,7 +39,7 @@
 | URL・公表日・保存先が規則に合わない | `contract_error` | failed runを記録 |
 | text方式でテキスト抽出失敗 | `pdf_read_failed` | 照合済みのhashを持つfailed runを記録 |
 
-PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる。既存の結果テーブル（`midterm_plans` 等）への `failed` 保存は従来どおり行う（採用版の扱いはStep 2で変える）。
+PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる。
 
 既存PDFを初めて台帳へ登録した場合は `fetched_at=NULL` で、`observed_at` 以降の基準値として扱う。過去の抽出結果へhashをbackfillしない。
 
@@ -62,3 +64,20 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 
 - `generation_config`: `{}` で記録する。LLM関数内の設定には `response_schema` などJSON化できない値が含まれ、呼び出し側へ写すとずれるため、Step 3でLLM関数から返す形にする
 - token・費用・request ID: Step 3で対応する
+
+## 結果versionと採用切替（Step 2）
+
+現行結果テーブル（`midterm_plans`・`midterm_plan_keywords`・`forecast_revision_details`・`forecast_revision_metrics`）は「現在の採用値」として残し、互換のため従来と同じ形で読める。保存は `save_midterm_result.py`・`save_forecast_result.py` が `adopt_result()` を通して行う。
+
+| 抽出結果 | 動作 |
+|---|---|
+| `failed` 以外（中計の `withdrawn`/`postponed`/`no_targets`、会社予想の `no_periods`/`correction`/`withdrawn` を含む） | 1トランザクションで、現行行を置き換え、書いた行を新しい版として `result_versions` へ、採用を `result_adoptions` へ追記する。途中で失敗したらrollbackし旧採用を残す |
+| `failed` | 現行行があれば何も書かず旧採用を維持する。なければ従来どおりfailed行を書く（会社予想のfailed再試行・中計の処理済み判定がこの行を使うため）。failed行は版にしない |
+
+- そのURLの版がまだない状態で最初に置き換えるとき、現行行を `origin=legacy` の版として退避する（Step 2適用前の結果を失わないため）。run・hashは持たず、採用時刻も分からないため採用行は作らない。現行行がfailedだけなら退避しない
+- 会社予想はStage1が成功すればStage2が失敗しても採用する（Stage1の結果は従来どおり保存する）
+- RERUNは削除してから再処理するのをやめ、処理済みスキップだけを外して再処理する。成功時に採用版を切り替え、失敗時は旧採用を維持する
+- 現行結果がfailedのURLを再処理するとき（会社予想のfailed再試行・RERUN）は、そのURLの直近のfailed runを今回最初のrunの `retry_of_run_id` にする。failed runは削除しない
+- `backfill_keywords.py` は既存の計画行を変えずにキーワードを追加し、計画＋追加キーワードを新しい版として採用する
+- 中計の保存は、キーワードと計画を1つの版にまとめる。採用切替中にキーワードの保存が失敗した場合は版を作らない（従来経路はキーワードの失敗に関係なく計画を保存する）
+- `--force`（reuseせず新runを作る指定）はStep 3のreuseと合わせて扱う。現状のRERUNは常に新runを作る

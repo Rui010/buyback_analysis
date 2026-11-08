@@ -93,6 +93,27 @@ class ProvenanceRecorder:
         self.code_commit = code_commit
         self.clock = clock
         self.resolver = resolver or resolve_verified_source
+        self._document_run_ids: list[str] = []
+        self._pending_retry_of: str | None = None
+
+    def start_document(self, url: str, *, retry: bool = False) -> None:
+        """1文書の処理開始時に呼ぶ。retry=True（現行結果がfailed）なら、このURLの直近の
+        failed runを今回最初に記録するrunのretry_of_run_idにする（failed runは削除しない）。"""
+        self._document_run_ids = []
+        self._pending_retry_of = None
+        if retry:
+            latest_failed = (
+                self.session.query(ProcessingRun.run_id)
+                .filter(ProcessingRun.url == url, ProcessingRun.status == "failed")
+                .order_by(ProcessingRun.completed_at.desc())
+                .first()
+            )
+            self._pending_retry_of = latest_failed[0] if latest_failed else None
+
+    @property
+    def document_run_ids(self) -> list[str]:
+        """start_document()以降に記録したrun（結果versionのrun_idsになる）。"""
+        return list(self._document_run_ids)
 
     @classmethod
     def from_env(cls, session, env=None) -> "ProvenanceRecorder | None":
@@ -111,8 +132,9 @@ class ProvenanceRecorder:
         return self.clock().isoformat()
 
     def _append(self, spec: RunSpec, *, status, started_at, error_code=None, outcome=None, outcome_reason=None):
+        run_id = str(uuid4())
         row = ProcessingRun(
-            run_id=str(uuid4()),
+            run_id=run_id,
             url=spec.url,
             source_document_id=spec.source_document_id,
             input_locator=spec.input_locator,
@@ -133,6 +155,7 @@ class ProvenanceRecorder:
             outcome_reason=outcome_reason,
             started_at=started_at,
             completed_at=self._now(),
+            retry_of_run_id=self._pending_retry_of,
             error_code=error_code,
         )
         self.session.add(row)
@@ -141,6 +164,8 @@ class ProvenanceRecorder:
         except SQLAlchemyError as exc:
             self.session.rollback()
             raise RunPersistError(f"processing_runの保存に失敗しました: {exc}") from exc
+        self._pending_retry_of = None
+        self._document_run_ids.append(run_id)
         return row
 
     def _failure_spec(self, *, url, stage, source: VerifiedSource | None) -> RunSpec:

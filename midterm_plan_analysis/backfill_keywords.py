@@ -14,7 +14,7 @@ from midterm_plan_analysis.usecase.get_midterm_plans_missing_keywords import (
     get_midterm_plans_missing_keywords,
 )
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data_by_urls
-from midterm_plan_analysis.usecase.post_midterm_keywords import post_midterm_keywords
+from midterm_plan_analysis.usecase.save_midterm_result import save_backfilled_keywords
 from midterm_plan_analysis.usecase.run_midterm_stages import run_midterm_keywords
 from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
 from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
@@ -69,6 +69,8 @@ def main():
                 continue
             tdnet_row = tdnet_by_url[plan.url]
             title, name = tdnet_row["title"], tdnet_row["name"]
+            if recorder is not None:
+                recorder.start_document(plan.url)
             pud_date_str = (plan.disclosure_date or "").replace("-", "")
 
             # provenance有効時は台帳照合済みのPDFだけを使う（台帳の公表日はTDnet行の値）
@@ -89,13 +91,13 @@ def main():
                 failed_extract += 1
                 continue
 
-            post_midterm_keywords(
-                session=session,
-                code=plan.code,
-                url=plan.url,
-                disclosure_date=plan.disclosure_date,
-                keywords=keywords_obj.get("data", {}).get("keywords"),
+            saved = save_backfilled_keywords(
+                session, recorder, plan=plan, keywords=keywords_obj.get("data", {}).get("keywords"),
             )
+            if not saved:
+                logger.error(f"[Backfill] キーワードの保存に失敗しました: {plan.url}")
+                failed_extract += 1
+                continue
             succeeded += 1
 
         summary = (

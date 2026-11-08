@@ -18,6 +18,7 @@ def post_midterm_plan(
     url: str,
     disclosure_date: str,
     extraction_status: str,
+    commit: bool = True,
 ) -> bool:
     """
     中期経営計画データをSQLiteに保存する。
@@ -30,6 +31,8 @@ def post_midterm_plan(
         disclosure_date: 開示日（rowデータから渡す）
         extraction_status: ok / failed / withdrawn / no_targets / postponed / skipped
             （前後の空白は除去し、それ以外の値は保存しない）
+        commit: Falseならcommitせずflushだけ行い、失敗時のrollbackも呼び出し側に任せる
+            （採用版切替のトランザクションに含めるため）
 
     Returns:
         保存に成功した場合 True。dataがNone・不正なextraction_status・主キー重複・
@@ -66,14 +69,16 @@ def post_midterm_plan(
 
     try:
         session.add(instance)
-        session.commit()
+        session.commit() if commit else session.flush()
         logger.info(f"中期経営計画を保存しました: {code} - {url}")
         return True
     except IntegrityError:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.info(f"主キーエラーによりスキップしました: {code} - {url}")
         return False
     except Exception as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.error(f"保存に失敗しました: {code} - {url} - {e}")
         return False

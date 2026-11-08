@@ -157,6 +157,7 @@ def post_forecast_revision(
     url: str,
     disclosure_date: str,
     extraction_status: str,
+    commit: bool = True,
 ) -> bool:
     """
     業績予想修正データをSQLiteに保存する。
@@ -168,6 +169,8 @@ def post_forecast_revision(
         url: ソースURL
         disclosure_date: 開示日
         extraction_status: ok / no_periods / failed / withdrawn / correction
+        commit: Falseならcommitせずflushだけ行い、失敗時のrollbackも呼び出し側に任せる
+            （採用版切替のトランザクションに含めるため）
 
     Returns:
         True: 保存成功または重複スキップ / False: 保存失敗
@@ -233,11 +236,12 @@ def post_forecast_revision(
             )
             session.add(metric)
 
-        session.commit()
+        session.commit() if commit else session.flush()
         logger.info(f"業績予想修正を保存しました: {code} - {url}")
         return True
     except IntegrityError as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         # 呼び出し元の_already_exists()で既存レコードは事前に除外済みのため、ここに到達する
         # IntegrityErrorは「既に保存済みなので安全にスキップ」ではなく、多くの場合
         # periods内の自然キー重複（例: metric_nameの正規化で複数指標が同じキーに丸められた）
@@ -246,6 +250,7 @@ def post_forecast_revision(
         logger.error(f"{describe_integrity_error(e)}により保存に失敗しました: {code} - {url} - {e}")
         return False
     except Exception as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.error(f"保存に失敗しました: {code} - {url} - {e}")
         return False

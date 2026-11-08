@@ -222,3 +222,37 @@ def test_reuse_key_matches_ir_analytics_contract_algorithm():
 )
 def test_reuse_key_changes_when_condition_changes(override):
     assert _spec().reuse_key() != _spec(**override).reuse_key()
+
+
+def test_document_run_ids_are_reset_per_document(session):
+    recorder = _recorder(session)
+    recorder.start_document(URL)
+    _run_metrics(recorder, lambda: {})
+    _run_metrics(recorder, lambda: {})
+    assert len(recorder.document_run_ids) == 2
+
+    recorder.start_document("https://x/other.pdf")
+    assert recorder.document_run_ids == []
+
+
+def test_retry_links_first_run_to_latest_failed_run(session):
+    times = iter(NOW + datetime.timedelta(seconds=i) for i in range(100))
+    recorder = ProvenanceRecorder(session, code_commit=COMMIT, clock=lambda: next(times))
+    recorder.start_document(URL)
+    _run_metrics(recorder, lambda: None)
+    [failed] = _runs(session)
+
+    recorder.start_document(URL, retry=True)
+    _run_metrics(recorder, lambda: {"data": {}})
+    _run_metrics(recorder, lambda: {"data": {}})
+
+    retried = session.query(ProcessingRun).filter(ProcessingRun.run_id != failed.run_id).order_by(ProcessingRun.started_at).all()
+    assert [r.retry_of_run_id for r in retried] == [failed.run_id, None]  # 最初のrunだけが失敗runを参照する
+    assert session.get(ProcessingRun, failed.run_id).status == "failed"  # 失敗runは残る
+
+
+def test_retry_without_previous_failed_run_has_no_link(session):
+    recorder = _recorder(session)
+    recorder.start_document(URL, retry=True)
+    _run_metrics(recorder, lambda: {})
+    assert _runs(session)[0].retry_of_run_id is None

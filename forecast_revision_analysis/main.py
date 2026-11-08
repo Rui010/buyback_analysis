@@ -16,12 +16,14 @@ from forecast_revision_analysis.usecase.get_tdnet_forecast_revision_data import 
     get_tdnet_forecast_revision_data,
     get_tdnet_forecast_revision_data_by_urls,
 )
-from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _to_float
+from forecast_revision_analysis.usecase.post_forecast_revision import check_missing_fields, _to_float
 from forecast_revision_analysis.usecase.retry_failed import already_processed, get_failed_urls
 from forecast_revision_analysis.usecase.run_forecast_revision_stages import (
     record_withdrawn_route,
     run_stage1_and_stage2,
 )
+from forecast_revision_analysis.usecase.save_forecast_result import FORECAST_TABLES, save_forecast_result
+from tdnet_provenance.usecase.adopt_result import current_is_failed, require_provenance_for_rerun
 from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
 from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
@@ -67,6 +69,7 @@ def main():
     try:
         init_db()
         recorder = ProvenanceRecorder.from_env(session)
+        require_provenance_for_rerun(recorder, RERUN_URLS)
         postgresql_engine = get_database_engine()
 
         if SYSTEM_START_DATE and SYSTEM_END_DATE:
@@ -80,11 +83,8 @@ def main():
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
 
         if RERUN_URLS:
-            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
-            for url in RERUN_URLS:
-                session.query(ForecastRevisionMetric).filter(ForecastRevisionMetric.url == url).delete()
-                session.query(ForecastRevisionDetail).filter(ForecastRevisionDetail.url == url).delete()
-            session.commit()
+            # 旧結果は削除しない。新しい抽出が成功した場合だけ採用版を切り替える
+            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを再処理します（成功時のみ採用版を切り替え）")
             df = get_tdnet_forecast_revision_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
         else:
             df = get_tdnet_forecast_revision_data(
@@ -110,15 +110,17 @@ def main():
             name = row["name"]
             date_str = row["date"].strftime("%Y%m%d")
 
-            if _already_exists(session, code, url):
+            if not RERUN_URLS and _already_exists(session, code, url):
                 logger.info(f"処理済みのためスキップ: {code} - {url}")
                 skipped_duplicates += 1
                 continue
+            if recorder is not None:
+                recorder.start_document(url, retry=current_is_failed(session, FORECAST_TABLES, url))
 
             if record_withdrawn_route(recorder, url=url, title=title):
-                saved = post_forecast_revision(
-                    session=session, data={}, code=code, url=url,
-                    disclosure_date=disclosure_date, extraction_status="withdrawn",
+                saved = save_forecast_result(
+                    session, recorder, code=code, url=url, disclosure_date=disclosure_date,
+                    data={}, extraction_status="withdrawn",
                 )
                 if saved:
                     logger.info(f"保存完了 [withdrawn]: {code} - {title}")
@@ -136,9 +138,9 @@ def main():
             )
             if pdf_input is None:
                 logger.error(f"PDFの取得に失敗しました: {url}")
-                saved = post_forecast_revision(
-                    session=session, data={}, code=code, url=url,
-                    disclosure_date=disclosure_date, extraction_status="failed",
+                saved = save_forecast_result(
+                    session, recorder, code=code, url=url, disclosure_date=disclosure_date,
+                    data={}, extraction_status="failed",
                 )
                 if saved:
                     failed_saves += 1
@@ -158,13 +160,9 @@ def main():
                 logger.error(f"LLMによるパースに失敗しました: {url}")
                 failed_parse += 1
 
-            saved = post_forecast_revision(
-                session=session,
-                data=obj or {},
-                code=code,
-                url=url,
-                disclosure_date=disclosure_date,
-                extraction_status=extraction_status,
+            saved = save_forecast_result(
+                session, recorder, code=code, url=url, disclosure_date=disclosure_date,
+                data=obj or {}, extraction_status=extraction_status,
             )
             if saved:
                 logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")

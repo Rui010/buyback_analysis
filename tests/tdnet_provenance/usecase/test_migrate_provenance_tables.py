@@ -21,8 +21,9 @@ def _engine_with_existing_data():
 
 def test_creates_tables_on_empty_db():
     engine = create_engine("sqlite:///:memory:", future=True)
-    assert migrate_provenance_tables(engine) == ["processing_runs", "tdnet_source_documents"]
-    assert {"processing_runs", "tdnet_source_documents"} <= set(inspect(engine).get_table_names())
+    expected = ["processing_runs", "result_adoptions", "result_versions", "tdnet_source_documents"]
+    assert migrate_provenance_tables(engine) == expected
+    assert set(expected) <= set(inspect(engine).get_table_names())
 
 
 def test_existing_tables_and_rows_are_unchanged():

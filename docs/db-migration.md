@@ -62,7 +62,7 @@ SQLiteは既存テーブルの主キーをALTERできないため、以下で移
 
 ## 2026-11-08: TDnet原典台帳・processing run
 
-`tdnet_source_documents` と `processing_runs` を新規作成する（既存テーブルは変更しない）。設計は `docs/tdnet_provenance_design.md` を参照。
+`tdnet_source_documents`・`processing_runs`・`result_versions`・`result_adoptions` を新規作成する（既存テーブルは変更しない）。Step 1の2テーブルだけを作成済みのDBに再実行すると、不足している2テーブルだけを追加する。設計は `docs/tdnet_provenance_design.md` を参照。
 
 **buyback_appの同期allowlist化が受入完了するまで、本番SQLiteへ実行しない。** 現行の同期処理は `bk_` 以外の全テーブルをPostgreSQLへ自動コピーするため。
 

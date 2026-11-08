@@ -3,6 +3,8 @@ from sqlalchemy import Float, Integer, String, Text
 from buyback_analysis.models.base import Base
 from tdnet_provenance.models.base import ProvenanceBase
 from tdnet_provenance.models.processing_run import ProcessingRun
+from tdnet_provenance.models.result_adoption import ResultAdoption
+from tdnet_provenance.models.result_version import ResultVersion
 from tdnet_provenance.models.tdnet_source_document import TdnetSourceDocument
 
 
@@ -14,7 +16,10 @@ def test_provenance_tables_are_not_created_by_init_db():
     # init_db()はBase.metadataだけをcreate_allするため、履歴テーブルは別metadataに置く
     assert "tdnet_source_documents" not in Base.metadata.tables
     assert "processing_runs" not in Base.metadata.tables
-    assert set(ProvenanceBase.metadata.tables) == {"tdnet_source_documents", "processing_runs"}
+    assert set(ProvenanceBase.metadata.tables) == {
+        "tdnet_source_documents", "processing_runs", "result_versions", "result_adoptions",
+    }
+    assert not set(ProvenanceBase.metadata.tables) & set(Base.metadata.tables)
 
 
 def test_tdnet_source_document_columns():
@@ -54,3 +59,20 @@ def test_processing_run_columns():
     assert isinstance(columns["input_tokens"].type, Integer)
     assert isinstance(columns["estimated_cost"].type, Float)
     assert isinstance(columns["status"].type, String)
+
+
+def test_result_version_columns():
+    columns = _columns(ResultVersion)
+    assert [c.name for c in ResultVersion.__table__.primary_key.columns] == ["version_id"]
+    for name in ("version_id", "url", "code", "result_type", "payload", "run_ids", "origin", "created_at"):
+        assert columns[name].nullable is False, name
+    assert columns["extraction_status"].nullable is True
+    assert isinstance(columns["payload"].type, Text)
+
+
+def test_result_adoption_columns():
+    columns = _columns(ResultAdoption)
+    assert [c.name for c in ResultAdoption.__table__.primary_key.columns] == ["adoption_id"]
+    assert set(columns) == {"adoption_id", "url", "result_type", "version_id", "adopted_at"}
+    for column in columns.values():
+        assert column.nullable is False, column.name

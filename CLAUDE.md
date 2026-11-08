@@ -57,7 +57,7 @@ python -m midterm_plan_analysis.backfill_keywords
 | `MIDTERM_USE_NATIVE_PDF` | `true` でmidterm_plan_analysisをネイティブPDF方式に切り替え（省略時は`false`） |
 | `MIDTERM_EXTRACT_KEYWORDS` | `true` でmidterm_plan_analysisに戦略テーマ・重点施策のキーワード抽出（別LLMコール）を追加する（省略時は`false`） |
 | `MIDTERM_BACKFILL_KEYWORDS_LIMIT` | `backfill_keywords.py`実行時に1回で処理するmidterm_plans行数の上限（省略時は`50`） |
-| `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLの既存データを削除して強制再処理する（両パイプライン共通） |
+| `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLを強制再処理する。中計・会社予想修正は旧結果を削除せず、成功時だけ採用版を切り替える（`TDNET_PROVENANCE_ENABLED=true`が必要。無効時は起動時に停止）。自己株買い・業績ベースラインは従来どおり既存データを削除してから再処理する |
 | `TDNET_PROVENANCE_ENABLED` | `true` で中計・会社予想修正（`backfill_keywords.py`含む）がPDFを運用原典台帳と照合し、`processing_runs`へrunを記録する（省略時は`false`）。事前に`scripts/migrate_tdnet_provenance_tables.py`の実行が必要 |
 | `CODE_COMMIT` | runに記録する40桁のGit commit ID。未設定時は`git rev-parse HEAD`（`TDNET_PROVENANCE_ENABLED=true`のときのみ使用） |
 
@@ -149,17 +149,20 @@ tdnet_provenance/
 ├── models/
 │   ├── base.py                    # ProvenanceBase（init_db()の対象外。migrationスクリプトだけが作成）
 │   ├── tdnet_source_document.py   # tdnet_source_documents テーブル（運用原典台帳・URLごとに不変）
-│   └── processing_run.py          # processing_runs テーブル（追記専用のrun履歴）
+│   ├── processing_run.py          # processing_runs テーブル（追記専用のrun履歴）
+│   ├── result_version.py          # result_versions テーブル（1文書の抽出結果1回分・不変）
+│   └── result_adoption.py         # result_adoptions テーブル（採用の追記記録）
 └── usecase/
     ├── source_identity.py         # 文書ID・公表日フォルダ・storage_uri・SHA-256の識別規則
     ├── resolve_verified_source.py # 台帳の初回登録とrun開始前の再hash照合
     ├── provenance_recorder.py     # runの記録（ProvenanceRecorder / run_llm_stage）
     ├── prepare_pdf_input.py       # LLMへ渡すPDF入力の準備（照合済みパス／従来経路）
+    ├── adopt_result.py            # 結果versionの保存と採用切替（現行結果テーブルの置換を含む）
     ├── code_version.py            # code_commitの解決
     └── migrate_provenance_tables.py
 ```
 
-`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1にあたる。設計は`docs/tdnet_provenance_design.md`を参照。
+`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1・2にあたる。保存は`midterm_plan_analysis/usecase/save_midterm_result.py`・`forecast_revision_analysis/usecase/save_forecast_result.py`経由で行う。設計は`docs/tdnet_provenance_design.md`を参照。
 
 ## データフロー
 
@@ -251,7 +254,7 @@ tests/
 - `load_prompt_template()` は自身のパッケージ（`buyback_analysis/`）配下の `prompts/` を参照するため、`midterm_plan.md` も `buyback_analysis/prompts/` に配置する（`midterm_plan_analysis/prompts/` は存在しない）
 - `midterm_plan_analysis` の重複チェックは `is_checked` テーブルではなく `midterm_plans` 主キー（`code` + `url`）で行う
 - `midterm_plan_analysis` のキーワード抽出（`extract_midterm_keywords.py`/`extract_midterm_keywords_native.py`）は、`metrics`抽出（決定論的な数値抽出）とは性質が異なる判断を伴うタスクのため、既存の`metrics`抽出プロンプトには混在させず別プロンプト・別LLMコールとして分離している（forecast_revisionのStage1/Stage2分離と同じ判断基準）。保存先も`midterm_plans`に列を足すのではなく`midterm_plan_keywords`という別テーブルにしている。理由は (1) 本プロジェクトはAlembic等のマイグレーションツールを持たず`init_db()`が`create_all()`のみのため、既存テーブルへの列追加は本番DBへの手動`ALTER TABLE`を要するが別テーブルなら不要、(2) 将来の「銘柄横断でのキーワード検索・トレンド分析」にはJSON列より縦持ちテーブルの方がJOIN/GROUP BYで直接使えるため。`midterm_plan_keywords`は`forecast_revision_metrics`と同じく`id`（autoincrement PK）+ `UniqueConstraint(code, url, keyword)`構成（複合PKではない）とし、各行は`keyword`（生表記）に加え`context_raw`（`reason_raw`と同じ「原文逐語引用」の思想、`Optional`）を持つ。LLMが同一文書内で同じ`keyword`を重複して返す場合があるため、`post_midterm_keywords()`は保存前に`keyword`単位で重複除去（先勝ち）してから`insert`する（除去しないと`UniqueConstraint`違反でその文書のキーワードが全件ロールバックされる）。設計背景は `docs/midterm_plan_design.md`「キーワード抽出（別テーブル・2コール分離設計）」を参照
-- `midterm_plan_analysis`の`main.py`は`_already_exists()`で処理済みURL（`midterm_plans`に存在するURL）を丸ごとスキップするため、`MIDTERM_EXTRACT_KEYWORDS`を後から有効化しても既存の過去データにはキーワードが後付けされない。この場合は`backfill_keywords.py`（別エントリーポイント）を使う。`RERUN_URLS`でも代用できるが、削除→`metrics`含め全再抽出になり不要なGemini呼び出し・再抽出結果のブレのリスクがあるため、キーワードだけを埋めたい場合は`backfill_keywords.py`を使うこと
+- `midterm_plan_analysis`の`main.py`は`_already_exists()`で処理済みURL（`midterm_plans`に存在するURL）を丸ごとスキップするため、`MIDTERM_EXTRACT_KEYWORDS`を後から有効化しても既存の過去データにはキーワードが後付けされない。この場合は`backfill_keywords.py`（別エントリーポイント）を使う。`RERUN_URLS`でも代用できるが、`metrics`含め全再抽出になり不要なGemini呼び出し・再抽出結果のブレのリスクがあるため、キーワードだけを埋めたい場合は`backfill_keywords.py`を使うこと
 - `forecast_revision_analysis` の欠損チェック対象フィールド: detail レベルは `prev_forecast_date`、period レベルは `metric_name`・`label_raw`・`prev_value`・`curr_value`・`fiscal_year`・`consolidation_type`。これらが null だとデータとして意味をなさない。`check_missing_fields()` は `extraction_status=ok` のレコードにのみ適用し、欠損があっても保存は行う（欠損件数を完了通知のサマリーに含める）
 - `forecast_revision_analysis` のLLM抽出はStage1（抽出・`responseSchema`で型固定・`temperature=0`）とStage2（推論・PDF本文は再送せずStage1の要約のみを入力・`temperature=0.2`）に分離している。`is_modified`はStage1のresponseSchemaに含めず、`prev_value`/`curr_value`の比較でコード側（`post_forecast_revision.py`・`main.py`の`_determine_extraction_status()`）が確定する。設計背景は `docs/forecast_revision_llm_pipeline_redesign.md` を参照
 - `forecast_revision_metrics` の自然キーは `(url, period_type, fiscal_year, consolidation_type, metric_name)` の複合ユニーク制約で担保する。`fiscal_year`（対象決算期の西暦年）・`consolidation_type`（`consolidated`=連結 / `non_consolidated`=単体・個別）がないと、同一期間・同一指標名で連結/単体や決算年度違いの行を区別できず重複を検出できない設計上の欠陥があったため追加した（詳細は `docs/forecast_revision.md` §7参照）

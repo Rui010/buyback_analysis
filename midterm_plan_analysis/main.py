@@ -14,14 +14,18 @@ from midterm_plan_analysis.usecase.get_tdnet_midterm_data import (
     get_tdnet_midterm_data,
     get_tdnet_midterm_data_by_urls,
 )
-from midterm_plan_analysis.usecase.post_midterm_plan import post_midterm_plan
-from midterm_plan_analysis.usecase.post_midterm_keywords import post_midterm_keywords
+from midterm_plan_analysis.usecase.save_midterm_result import (
+    KEYWORDS_NOT_REQUESTED,
+    MIDTERM_TABLES,
+    save_midterm_result,
+)
 from midterm_plan_analysis.usecase.run_midterm_stages import (
     run_midterm_classification,
     run_midterm_keywords,
     run_midterm_metrics,
 )
 from buyback_analysis.interface.notifier import notify_success, notify_error
+from tdnet_provenance.usecase.adopt_result import current_is_failed, require_provenance_for_rerun
 from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
 from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
@@ -56,6 +60,7 @@ def main():
     try:
         init_db()
         recorder = ProvenanceRecorder.from_env(session)
+        require_provenance_for_rerun(recorder, RERUN_URLS)
         postgresql_engine = get_database_engine()
 
         if SYSTEM_START_DATE and SYSTEM_END_DATE:
@@ -69,11 +74,8 @@ def main():
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
 
         if RERUN_URLS:
-            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
-            for url in RERUN_URLS:
-                session.query(MidtermPlan).filter(MidtermPlan.url == url).delete()
-                session.query(MidtermPlanKeyword).filter(MidtermPlanKeyword.url == url).delete()
-            session.commit()
+            # 旧結果は削除しない。新しい抽出が成功した場合だけ採用版を切り替える
+            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを再処理します（成功時のみ採用版を切り替え）")
             df = get_tdnet_midterm_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
         else:
             df = get_tdnet_midterm_data(
@@ -89,13 +91,15 @@ def main():
             url = row["link"]
             disclosure_date = row["date"].strftime("%Y-%m-%d")
 
-            if _already_exists(session, code, url):
+            if not RERUN_URLS and _already_exists(session, code, url):
                 logger.info(f"処理済みのためスキップ: {code} - {url}")
                 skipped_duplicates += 1
                 continue
 
             title = row["title"]
             name = row["name"]
+            if recorder is not None:
+                recorder.start_document(url, retry=current_is_failed(session, MIDTERM_TABLES, url))
 
             # provenance有効時は台帳照合済みのPDFだけをnative/textの両経路で使う
             pdf_input = prepare_pdf_input(
@@ -105,9 +109,9 @@ def main():
             )
             if pdf_input is None:
                 logger.error(f"PDFの取得に失敗しました: {url}")
-                post_midterm_plan(
-                    session=session, data={}, code=code, url=url,
-                    disclosure_date=disclosure_date, extraction_status="failed",
+                save_midterm_result(
+                    session, recorder, code=code, url=url, disclosure_date=disclosure_date,
+                    data={}, extraction_status="failed",
                 )
                 failed_pdf += 1
                 continue
@@ -116,24 +120,19 @@ def main():
 
             if obj is None:
                 logger.error(f"LLMによるパースに失敗しました: {url}")
-                post_midterm_plan(
-                    session=session, data={}, code=code, url=url,
-                    disclosure_date=disclosure_date, extraction_status="failed",
+                save_midterm_result(
+                    session, recorder, code=code, url=url, disclosure_date=disclosure_date,
+                    data={}, extraction_status="failed",
                 )
                 failed_parse += 1
                 continue
 
+            keywords = KEYWORDS_NOT_REQUESTED
             if EXTRACT_KEYWORDS:
                 keywords_obj = run_midterm_keywords(recorder, pdf_input, title=title, code=code, name=name)
                 if keywords_obj is None:
                     logger.error(f"[Keywords] キーワード抽出に失敗しました: {url}")
-                post_midterm_keywords(
-                    session=session,
-                    code=code,
-                    url=url,
-                    disclosure_date=disclosure_date,
-                    keywords=(keywords_obj or {}).get("data", {}).get("keywords"),
-                )
+                keywords = (keywords_obj or {}).get("data", {}).get("keywords")
 
             metrics = obj.get("data", {}).get("metrics")
             has_metrics = bool(metrics) and any(
@@ -153,13 +152,10 @@ def main():
                     recorder, pdf_input, title=title, code=code, name=name
                 )
 
-            saved = post_midterm_plan(
-                session=session,
-                data=obj,
-                code=code,
-                url=url,
-                disclosure_date=disclosure_date,
-                extraction_status=extraction_status,
+            # キーワード→計画の順に保存する（provenance有効時は1つの版として採用）
+            saved = save_midterm_result(
+                session, recorder, code=code, url=url, disclosure_date=disclosure_date,
+                data=obj, extraction_status=extraction_status, keywords=keywords,
             )
             if saved:
                 logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
