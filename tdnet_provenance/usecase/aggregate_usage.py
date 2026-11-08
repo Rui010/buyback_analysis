@@ -26,7 +26,10 @@ def aggregate_document_usage(session, *, urls=None, since: str | None = None) ->
 
     results = []
     for url, runs in sorted(grouped.items(), key=lambda item: item[0] or ""):
-        currencies = {r.estimated_cost_currency for r in runs if r.estimated_cost_currency and r.estimated_cost}
+        currencies = {
+            r.estimated_cost_currency for r in runs
+            if r.estimated_cost_currency and r.estimated_cost is not None  # 0円の再利用runも通貨を持つ
+        }
         if len(currencies) > 1:
             raise ValueError(f"通貨が混在しているため費用を合計できません: {url} {sorted(currencies)}")
         statuses = defaultdict(int)

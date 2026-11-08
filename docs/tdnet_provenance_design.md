@@ -94,8 +94,9 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 `run_llm()` は、同じreuse key（`source_hash`・`input_hash`・`run_kind`・`stage`・`extractor_version`・`prompt_hash`・モデル・`generation_config`）で成功し、出力が `run_outputs` に保存されているrunがあれば、LLMを呼ばずにその出力を返し、`status=reused`・`reused_run_id` のrunを記録する（token・費用は0）。
 
 - `extractor_version` に `code_commit` を使うとcommitのたびに再利用が効かなくなるため、LLM関数モジュールごとの `EXTRACTOR_VERSION` を使う。**LLMの出力を解析する処理（JSON整形・null正規化・スキーマ検証後の加工など）を変えたら、そのモジュールの `EXTRACTOR_VERSION` を上げること。** 上げ忘れると古い解析結果が再利用される。プロンプト・モデル・生成設定（スキーマを含む）・PDF・入力の変更はreuse keyに自動で反映される
-- 再利用しない場合: `RERUN_FORCE=true`（全stageでLLMを呼び直す）、retryの最初のrun（失敗の再試行は呼び直す）、失敗run（出力を保存しない）
-- RERUNで全stageが再利用された場合も、新しい版と採用は記録する（その時点で再処理したことを残す）
+- 再利用しない場合: `RERUN_URLS` 指定時（誤抽出の修正に使えるよう既定で全stageを呼び直す。`RERUN_ALLOW_REUSE=true` のときだけ、条件が変わっていないstageを再利用する）、retryの最初のrun（失敗の再試行は呼び直す）、失敗run（出力を保存しない）
+- 再利用が既定で効くのは通常処理（採用の保存失敗後の再処理、failed再試行の2番目以降のstage、`backfill_keywords.py` など）
+- `RERUN_ALLOW_REUSE=true` のRERUNで全stageが再利用された場合も、新しい版と採用は記録する（その時点で再処理したことを残す）
 - 出力がJSON化できない場合は保存せず、そのrunは再利用されない（エラーログを出す）
 
 ### 使用量・費用

@@ -140,6 +140,14 @@ def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def rerun_forces_llm(env) -> bool:
+    """RERUN_URLS指定時は、誤抽出の修正に使えるよう既定で再利用せずLLMを呼び直す。
+    RERUN_ALLOW_REUSE=trueのときだけ、条件が変わっていないstageの再利用を許す。"""
+    rerun_urls = [u.strip() for u in (env.get("RERUN_URLS") or "").split(",") if u.strip()]
+    allow_reuse = (env.get("RERUN_ALLOW_REUSE") or "false").lower() == "true"
+    return bool(rerun_urls) and not allow_reuse
+
+
 class ProvenanceRecorder:
     def __init__(self, session, code_commit: str, clock=_utc_now, resolver=None,
                  force: bool = False, pricing: LlmPricing | None = None):
@@ -182,7 +190,7 @@ class ProvenanceRecorder:
         return cls(
             session,
             code_commit=resolve_code_commit(env=env),
-            force=(env.get("RERUN_FORCE") or "false").lower() == "true",
+            force=rerun_forces_llm(env),
             pricing=LlmPricing.from_env(env),
         )
 

@@ -222,10 +222,32 @@ def test_pricing_from_env_rejects_partial_or_invalid(env):
         LlmPricing.from_env(env)
 
 
-def test_from_env_reads_force_and_pricing(session):
+@pytest.mark.parametrize(
+    "env,expected_force",
+    [
+        ({}, False),  # 通常処理は再利用する
+        ({"RERUN_URLS": "https://x/a.pdf"}, True),  # RERUNは既定でLLMを呼び直す
+        ({"RERUN_URLS": "https://x/a.pdf", "RERUN_ALLOW_REUSE": "true"}, False),
+        ({"RERUN_URLS": " , "}, False),
+        ({"RERUN_ALLOW_REUSE": "true"}, False),
+    ],
+)
+def test_from_env_force_follows_rerun(session, env, expected_force):
     recorder = ProvenanceRecorder.from_env(session, env={
-        "TDNET_PROVENANCE_ENABLED": "true", "CODE_COMMIT": COMMIT, "RERUN_FORCE": "true",
+        "TDNET_PROVENANCE_ENABLED": "true", "CODE_COMMIT": COMMIT,
         "LLM_PRICE_INPUT_PER_1M_TOKENS": "1", "LLM_PRICE_OUTPUT_PER_1M_TOKENS": "2", "LLM_PRICE_CURRENCY": "USD",
+        **env,
     })
-    assert recorder.force is True
+    assert recorder.force is expected_force
     assert recorder.pricing == LlmPricing(1.0, 2.0, "USD")
+
+
+def test_rerun_with_same_conditions_calls_llm_again(session):
+    # 誤抽出の修正でRERUNしたとき、同じ誤った出力を再利用しない
+    _run(_recorder(session), Counter(result={"data": {"metrics": ["誤り"]}}))
+    rerun = ProvenanceRecorder.from_env(session, env={
+        "TDNET_PROVENANCE_ENABLED": "true", "CODE_COMMIT": COMMIT, "RERUN_URLS": URL,
+    })
+    second = Counter(result={"data": {"metrics": ["修正後"]}})
+    assert _run(rerun, second) == {"data": {"metrics": ["修正後"]}}
+    assert second.calls == 1

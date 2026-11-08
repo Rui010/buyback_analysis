@@ -59,6 +59,19 @@ def test_mixed_currency_is_rejected(session):
         aggregate_document_usage(session)
 
 
+def test_reused_only_document_keeps_currency(session):
+    _run(session, "1", A, status="reused", tokens=(0, 0), cost=0.0, currency="JPY")
+    [row] = aggregate_document_usage(session)
+    assert (row["estimated_cost"], row["currency"]) == (0.0, "JPY")
+
+
+def test_zero_cost_runs_with_mixed_currency_are_rejected(session):
+    _run(session, "1", A, status="reused", tokens=(0, 0), cost=0.0, currency="JPY")
+    _run(session, "2", A, status="reused", tokens=(0, 0), cost=0.0, currency="USD")
+    with pytest.raises(ValueError, match="通貨"):
+        aggregate_document_usage(session)
+
+
 def test_decision_runs_are_not_counted_as_missing_cost(session):
     _run(session, "1", A, run_kind="route", tokens=None)
     [row] = aggregate_document_usage(session)

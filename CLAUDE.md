@@ -60,7 +60,7 @@ python -m midterm_plan_analysis.backfill_keywords
 | `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLを強制再処理する（全パイプライン共通）。旧結果は削除せず、成功時だけ採用版を切り替えて旧結果を`result_versions`に残す。`TDNET_PROVENANCE_ENABLED=true`と`scripts/migrate_tdnet_provenance_tables.py`の実行が必要（無効時は起動時に停止）。自己株買いは文書種別の判定からやり直す |
 | `TDNET_PROVENANCE_ENABLED` | `true` で中計・会社予想修正（`backfill_keywords.py`含む）がPDFを運用原典台帳と照合し、`processing_runs`へrunを記録する（省略時は`false`）。事前に`scripts/migrate_tdnet_provenance_tables.py`の実行が必要 |
 | `CODE_COMMIT` | runに記録する40桁のGit commit ID。未設定時は`git rev-parse HEAD`（`TDNET_PROVENANCE_ENABLED=true`のときのみ使用） |
-| `RERUN_FORCE` | `true` で同じ条件の成功runがあっても再利用せず、中計・会社予想修正の全LLM stageを呼び直す（省略時は`false`） |
+| `RERUN_ALLOW_REUSE` | `RERUN_URLS`指定時、`true`なら条件（プロンプト・モデル・`EXTRACTOR_VERSION`等）が変わっていないLLM stageは以前の成功runの出力を再利用する。省略時（`false`）はRERUNで全LLM stageを呼び直す（誤抽出の修正用途） |
 | `LLM_PRICE_INPUT_PER_1M_TOKENS` / `LLM_PRICE_OUTPUT_PER_1M_TOKENS` / `LLM_PRICE_CURRENCY` | 100万tokenあたりの入力・出力単価と通貨。3つとも指定したときだけprocessing_runに費用を記録する（省略時はtoken数のみ） |
 
 ## アーキテクチャ概要
