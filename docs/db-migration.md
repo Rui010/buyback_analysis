@@ -59,3 +59,17 @@ SQLiteは既存テーブルの主キーをALTERできないため、以下で移
 ```
 
 実行前にSQLiteオンラインバックアップを同じディレクトリへ自動作成する。不足列だけを追加する再実行可能な処理で、既存行を変更せず、過去データのバックフィルも行わない。
+
+## 2026-11-08: TDnet原典台帳・processing run
+
+`tdnet_source_documents` と `processing_runs` を新規作成する（既存テーブルは変更しない）。設計は `docs/tdnet_provenance_design.md` を参照。
+
+**buyback_appの同期allowlist化が受入完了するまで、本番SQLiteへ実行しない。** 現行の同期処理は `bk_` 以外の全テーブルをPostgreSQLへ自動コピーするため。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\migrate_tdnet_provenance_tables.py
+```
+
+実行前にSQLiteオンラインバックアップ（`<db>.bak-provenance-<日時>`）を同じディレクトリへ作成し、前後で全テーブルの行数を表示する。既存テーブルの行数が変わった場合は異常終了する。不足テーブルだけを作成する再実行可能な処理で、同名テーブルの列集合がモデルと異なる場合は何も作らずに停止する。
+
+復元はパイプライン停止中に、バックアップファイルを元のDBファイル名へコピーして戻す。

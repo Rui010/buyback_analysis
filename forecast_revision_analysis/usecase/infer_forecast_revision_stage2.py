@@ -16,6 +16,8 @@ from forecast_revision_analysis.usecase.schemas import Stage2Inference
 
 logger = Logger()
 
+PROMPT_FILENAME = "forecast_revision_stage2.md"
+
 STAGE2_TEMPERATURE = 0.2
 
 
@@ -33,7 +35,7 @@ def infer_forecast_revision_stage2(context: str) -> Optional[Dict[str, Any]]:
     if not api_key:
         raise ValueError("GEMINI_API_KEYが設定されていません")
 
-    prompt = load_prompt_template("forecast_revision_stage2.md", context=context)
+    prompt = load_prompt_template(PROMPT_FILENAME, context=context)
 
     max_retries = 3
     retry_delay = 60  # 秒

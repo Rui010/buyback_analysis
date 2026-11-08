@@ -58,6 +58,8 @@ python -m midterm_plan_analysis.backfill_keywords
 | `MIDTERM_EXTRACT_KEYWORDS` | `true` でmidterm_plan_analysisに戦略テーマ・重点施策のキーワード抽出（別LLMコール）を追加する（省略時は`false`） |
 | `MIDTERM_BACKFILL_KEYWORDS_LIMIT` | `backfill_keywords.py`実行時に1回で処理するmidterm_plans行数の上限（省略時は`50`） |
 | `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLの既存データを削除して強制再処理する（両パイプライン共通） |
+| `TDNET_PROVENANCE_ENABLED` | `true` で中計・会社予想修正（`backfill_keywords.py`含む）がPDFを運用原典台帳と照合し、`processing_runs`へrunを記録する（省略時は`false`）。事前に`scripts/migrate_tdnet_provenance_tables.py`の実行が必要 |
+| `CODE_COMMIT` | runに記録する40桁のGit commit ID。未設定時は`git rev-parse HEAD`（`TDNET_PROVENANCE_ENABLED=true`のときのみ使用） |
 
 ## アーキテクチャ概要
 
@@ -139,6 +141,24 @@ forecast_revision_analysis/
 ```
 
 `buyback_analysis` の `interface/` および `usecase/get_pdf_data.py` を共用する。LLM抽出はStage1/Stage2に分離しており、汎用の `parse_text_by_llm`/`parse_pdf_by_llm`（buyback_analysis/midterm_plan_analysisが使用）とは別に、forecast_revision_analysis固有のPydanticスキーマ付き抽出関数を持つ（詳細は `docs/forecast_revision_llm_pipeline_redesign.md`）。
+
+### tdnet_provenance（TDnet原典台帳・processing run）
+
+```
+tdnet_provenance/
+├── models/
+│   ├── base.py                    # ProvenanceBase（init_db()の対象外。migrationスクリプトだけが作成）
+│   ├── tdnet_source_document.py   # tdnet_source_documents テーブル（運用原典台帳・URLごとに不変）
+│   └── processing_run.py          # processing_runs テーブル（追記専用のrun履歴）
+└── usecase/
+    ├── source_identity.py         # 文書ID・公表日フォルダ・storage_uri・SHA-256の識別規則
+    ├── resolve_verified_source.py # 台帳の初回登録とrun開始前の再hash照合
+    ├── provenance_recorder.py     # runの記録（ProvenanceRecorder / run_llm_stage）
+    ├── code_version.py            # code_commitの解決
+    └── migrate_provenance_tables.py
+```
+
+`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1にあたる。設計は`docs/tdnet_provenance_design.md`を参照。
 
 ## データフロー
 

@@ -12,6 +12,8 @@ from buyback_analysis.consts.llm_model import LlmModel
 
 logger = Logger()
 
+PROMPT_FILENAME = "classify_midterm.md"
+
 
 def classify_midterm_by_llm(
     title: str, content: str, code: str, name: str
@@ -29,7 +31,7 @@ def classify_midterm_by_llm(
         raise ValueError("GEMINI_API_KEYが設定されていません")
 
     prompt = load_prompt_template(
-        "classify_midterm.md", title=title, content=content, code=code, name=name
+        PROMPT_FILENAME, title=title, content=content, code=code, name=name
     )
 
     max_retries = 3

@@ -16,6 +16,8 @@ from forecast_revision_analysis.usecase.schemas import Stage1Extraction
 
 logger = Logger()
 
+PROMPT_FILENAME = "forecast_revision_stage1.md"
+
 STAGE1_TEMPERATURE = 0.0
 
 
@@ -35,7 +37,7 @@ def extract_forecast_revision_stage1(
         raise ValueError("GEMINI_API_KEYが設定されていません")
 
     prompt = load_prompt_template(
-        "forecast_revision_stage1.md", title=title, content=content, code=code, name=name
+        PROMPT_FILENAME, title=title, content=content, code=code, name=name
     )
 
     max_retries = 3

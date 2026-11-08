@@ -16,6 +16,8 @@ from midterm_plan_analysis.usecase.schemas import MidtermKeywordExtraction
 
 logger = Logger()
 
+PROMPT_FILENAME = "midterm_keywords_native.md"
+
 KEYWORDS_TEMPERATURE = 0.0
 
 
@@ -35,7 +37,7 @@ def extract_midterm_keywords_native(
     if not api_key:
         raise ValueError("GEMINI_API_KEYが設定されていません")
 
-    prompt = load_prompt_template("midterm_keywords_native.md", title=title, code=code, name=name)
+    prompt = load_prompt_template(PROMPT_FILENAME, title=title, code=code, name=name)
 
     max_retries = 3
     retry_delay = 60

@@ -17,6 +17,8 @@ from forecast_revision_analysis.usecase.schemas import Stage1Extraction
 
 logger = Logger()
 
+PROMPT_FILENAME = "forecast_revision_stage1_native.md"
+
 STAGE1_TEMPERATURE = 0.0
 LEAD_TEXT_MAX_CHARS = 1000
 
@@ -65,7 +67,7 @@ def extract_forecast_revision_stage1_native(
 
     lead_text = _extract_lead_text(pdf_path) or "（抽出できませんでした）"
     prompt = load_prompt_template(
-        "forecast_revision_stage1_native.md", title=title, code=code, name=name, lead_text=lead_text
+        PROMPT_FILENAME, title=title, code=code, name=name, lead_text=lead_text
     )
 
     max_retries = 3
