@@ -125,8 +125,9 @@ def test_system_exit_is_recorded_then_reraised(session):
 def test_run_persist_failure_raises_and_rolls_back():
     session = MagicMock()
     session.commit.side_effect = OperationalError("insert", {}, Exception("database is locked"))
+    recorder = ProvenanceRecorder(session, code_commit=COMMIT, clock=lambda: NOW, force=True)  # MagicMockで再利用検索をしない
     with pytest.raises(RunPersistError):
-        _run_metrics(_recorder(session), lambda: {"data": {}})
+        _run_metrics(recorder, lambda: {"data": {}})
     session.rollback.assert_called_once()
 
 

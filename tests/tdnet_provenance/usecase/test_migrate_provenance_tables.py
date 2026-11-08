@@ -21,7 +21,7 @@ def _engine_with_existing_data():
 
 def test_creates_tables_on_empty_db():
     engine = create_engine("sqlite:///:memory:", future=True)
-    expected = ["processing_runs", "result_adoptions", "result_versions", "tdnet_source_documents"]
+    expected = ["processing_runs", "result_adoptions", "result_versions", "run_outputs", "tdnet_source_documents"]
     assert migrate_provenance_tables(engine) == expected
     assert set(expected) <= set(inspect(engine).get_table_names())
 
@@ -121,3 +121,24 @@ def test_backup_can_be_restored(tmp_path):
     assert table_fingerprints(restored) == before
     assert "processing_runs" not in inspect(restored).get_table_names()
     restored.dispose()
+
+
+def test_reference_check_passes_on_consistent_history():
+    from tdnet_provenance.usecase.migrate_provenance_tables import verify_provenance_references
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    migrate_provenance_tables(engine)
+    verify_provenance_references(engine)
+
+
+def test_reference_check_detects_orphan_adoption():
+    from tdnet_provenance.usecase.migrate_provenance_tables import verify_provenance_references
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    migrate_provenance_tables(engine)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "INSERT INTO result_adoptions VALUES ('a1', 'https://x/a.pdf', 'midterm_plan', 'missing-version', 't')"
+        ))
+    with pytest.raises(RuntimeError, match="版のないadoption"):
+        verify_provenance_references(engine)

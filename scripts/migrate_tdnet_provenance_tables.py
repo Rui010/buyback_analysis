@@ -21,6 +21,7 @@ from tdnet_provenance.usecase.migrate_provenance_tables import (
     migrate_provenance_tables,
     restore_sqlite_backup,
     table_fingerprints,
+    verify_provenance_references,
     verify_provenance_schema,
 )
 
@@ -49,6 +50,8 @@ def migrate() -> None:
 
     verify_provenance_schema(engine)
     print("schema検証: OK")
+    verify_provenance_references(engine)
+    print("履歴テーブルの参照検証: OK")
 
     after = table_fingerprints(engine)
     changed = sorted(name for name, value in before.items() if after.get(name) != value)

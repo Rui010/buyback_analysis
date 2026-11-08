@@ -17,7 +17,7 @@ def test_provenance_tables_are_not_created_by_init_db():
     assert "tdnet_source_documents" not in Base.metadata.tables
     assert "processing_runs" not in Base.metadata.tables
     assert set(ProvenanceBase.metadata.tables) == {
-        "tdnet_source_documents", "processing_runs", "result_versions", "result_adoptions",
+        "tdnet_source_documents", "processing_runs", "result_versions", "result_adoptions", "run_outputs",
     }
     assert not set(ProvenanceBase.metadata.tables) & set(Base.metadata.tables)
 

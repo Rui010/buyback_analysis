@@ -9,7 +9,12 @@ from forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native 
 from forecast_revision_analysis.usecase.infer_forecast_revision_stage2 import infer_forecast_revision_stage2
 from forecast_revision_analysis.usecase.merge_stage_results import merge_stage_results
 from tdnet_provenance.usecase.prepare_pdf_input import PdfInput
-from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder, run_llm_stage, text_hash
+from tdnet_provenance.usecase.provenance_recorder import (
+    ProvenanceRecorder,
+    module_llm_settings,
+    run_llm_stage,
+    text_hash,
+)
 
 WITHDRAWN_KEYWORDS = [
     "予想の取り下げ", "予想を取り下げ",
@@ -47,7 +52,7 @@ def run_stage1_and_stage2(recorder: ProvenanceRecorder | None, pdf_input: PdfInp
     if pdf_input.pdf_path is not None:
         stage1_obj = run_llm_stage(
             recorder, pdf_input.source, stage="stage1", prompt_name=stage1_native_module.PROMPT_FILENAME,
-            input_payload=stage1_input,
+            input_payload=stage1_input, **module_llm_settings(stage1_native_module),
             call=lambda: extract_forecast_revision_stage1_native(
                 title=title, pdf_path=pdf_input.pdf_path, code=code, name=name,
             ),
@@ -56,6 +61,7 @@ def run_stage1_and_stage2(recorder: ProvenanceRecorder | None, pdf_input: PdfInp
         stage1_obj = run_llm_stage(
             recorder, pdf_input.source, stage="stage1", prompt_name=stage1_text_module.PROMPT_FILENAME,
             input_payload={**stage1_input, "text_sha256": text_hash(pdf_input.content)},
+            **module_llm_settings(stage1_text_module),
             call=lambda: extract_forecast_revision_stage1(
                 title=title, content=pdf_input.content, code=code, name=name,
             ),
@@ -67,7 +73,7 @@ def run_stage1_and_stage2(recorder: ProvenanceRecorder | None, pdf_input: PdfInp
     stage2_context = build_stage2_context(stage1_obj, title=title, code=code, name=name)
     stage2_obj = run_llm_stage(
         recorder, pdf_input.source, stage="stage2", prompt_name=stage2_module.PROMPT_FILENAME,
-        input_payload={"context_sha256": text_hash(stage2_context)},
+        input_payload={"context_sha256": text_hash(stage2_context)}, **module_llm_settings(stage2_module),
         call=lambda: infer_forecast_revision_stage2(stage2_context),
     )
     return merge_stage_results(stage1_obj, stage2_obj)

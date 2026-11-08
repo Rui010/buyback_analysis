@@ -11,8 +11,7 @@ from pathlib import Path
 from sqlalchemy import inspect, text
 
 from tdnet_provenance.models.base import ProvenanceBase
-from tdnet_provenance.models.processing_run import ProcessingRun  # noqa: F401 metadataへ登録
-from tdnet_provenance.models.tdnet_source_document import TdnetSourceDocument  # noqa: F401 metadataへ登録
+import tdnet_provenance.models  # noqa: F401 全テーブルをmetadataへ登録
 
 
 def table_row_counts(engine) -> dict[str, int]:
@@ -85,6 +84,37 @@ def verify_provenance_schema(engine) -> None:
                 problems.append(f"{name}: 索引 {index.name} がありません")
     if problems:
         raise RuntimeError("schemaがモデルと一致しません: " + " / ".join(problems))
+
+
+REFERENCE_CHECKS = {
+    "版のないadoption": (
+        "SELECT COUNT(*) FROM result_adoptions a "
+        "LEFT JOIN result_versions v ON v.version_id = a.version_id WHERE v.version_id IS NULL"
+    ),
+    "runのないrun_output": (
+        "SELECT COUNT(*) FROM run_outputs o "
+        "LEFT JOIN processing_runs r ON r.run_id = o.run_id WHERE r.run_id IS NULL"
+    ),
+    "再利用元のないreused run": (
+        "SELECT COUNT(*) FROM processing_runs r "
+        "LEFT JOIN processing_runs o ON o.run_id = r.reused_run_id "
+        "WHERE r.reused_run_id IS NOT NULL AND o.run_id IS NULL"
+    ),
+    "再試行元のないretry run": (
+        "SELECT COUNT(*) FROM processing_runs r "
+        "LEFT JOIN processing_runs o ON o.run_id = r.retry_of_run_id "
+        "WHERE r.retry_of_run_id IS NOT NULL AND o.run_id IS NULL"
+    ),
+}
+
+
+def verify_provenance_references(engine) -> None:
+    """履歴テーブル間の参照切れがないことを確認する（SQLiteの外部キーは使っていないため）。"""
+    with engine.connect() as connection:
+        broken = {name: connection.execute(text(sql)).scalar() for name, sql in REFERENCE_CHECKS.items()}
+    broken = {name: count for name, count in broken.items() if count}
+    if broken:
+        raise RuntimeError(f"履歴テーブルに参照切れがあります: {broken}")
 
 
 def backup_sqlite_database(source_path, backup_path) -> Path:

@@ -60,6 +60,8 @@ python -m midterm_plan_analysis.backfill_keywords
 | `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLを強制再処理する（全パイプライン共通）。旧結果は削除せず、成功時だけ採用版を切り替えて旧結果を`result_versions`に残す。`TDNET_PROVENANCE_ENABLED=true`と`scripts/migrate_tdnet_provenance_tables.py`の実行が必要（無効時は起動時に停止）。自己株買いは文書種別の判定からやり直す |
 | `TDNET_PROVENANCE_ENABLED` | `true` で中計・会社予想修正（`backfill_keywords.py`含む）がPDFを運用原典台帳と照合し、`processing_runs`へrunを記録する（省略時は`false`）。事前に`scripts/migrate_tdnet_provenance_tables.py`の実行が必要 |
 | `CODE_COMMIT` | runに記録する40桁のGit commit ID。未設定時は`git rev-parse HEAD`（`TDNET_PROVENANCE_ENABLED=true`のときのみ使用） |
+| `RERUN_FORCE` | `true` で同じ条件の成功runがあっても再利用せず、中計・会社予想修正の全LLM stageを呼び直す（省略時は`false`） |
+| `LLM_PRICE_INPUT_PER_1M_TOKENS` / `LLM_PRICE_OUTPUT_PER_1M_TOKENS` / `LLM_PRICE_CURRENCY` | 100万tokenあたりの入力・出力単価と通貨。3つとも指定したときだけprocessing_runに費用を記録する（省略時はtoken数のみ） |
 
 ## アーキテクチャ概要
 
@@ -151,6 +153,7 @@ tdnet_provenance/
 │   ├── tdnet_source_document.py   # tdnet_source_documents テーブル（運用原典台帳・URLごとに不変）
 │   ├── processing_run.py          # processing_runs テーブル（追記専用のrun履歴）
 │   ├── result_version.py          # result_versions テーブル（1文書の抽出結果1回分・不変）
+│   ├── run_output.py              # run_outputs テーブル（成功runの出力。再利用に使う）
 │   └── result_adoption.py         # result_adoptions テーブル（採用の追記記録）
 └── usecase/
     ├── source_identity.py         # 文書ID・公表日フォルダ・storage_uri・SHA-256の識別規則
@@ -158,11 +161,12 @@ tdnet_provenance/
     ├── provenance_recorder.py     # runの記録（ProvenanceRecorder / run_llm_stage）
     ├── prepare_pdf_input.py       # LLMへ渡すPDF入力の準備（照合済みパス／従来経路）
     ├── adopt_result.py            # 結果versionの保存と採用切替（現行結果テーブルの置換を含む）
+    ├── aggregate_usage.py         # 文書単位のtoken・費用集計（scripts/report_llm_usage.py）
     ├── code_version.py            # code_commitの解決
     └── migrate_provenance_tables.py
 ```
 
-`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1・2にあたる。保存は`midterm_plan_analysis/usecase/save_midterm_result.py`・`forecast_revision_analysis/usecase/save_forecast_result.py`経由で行う。自己株買い（`buyback_analysis/usecase/buyback_result_writer.py`）・業績ベースライン（`earnings_baseline_analysis/usecase/save_earnings_result.py`）は台帳照合・run記録の対象外だが、RERUN時の版保存・採用切替だけは同じ仕組みを使う（版は`origin=unrecorded`）。設計は`docs/tdnet_provenance_design.md`を参照。
+`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1〜3にあたる。保存は`midterm_plan_analysis/usecase/save_midterm_result.py`・`forecast_revision_analysis/usecase/save_forecast_result.py`経由で行う。自己株買い（`buyback_analysis/usecase/buyback_result_writer.py`）・業績ベースライン（`earnings_baseline_analysis/usecase/save_earnings_result.py`）は台帳照合・run記録の対象外だが、RERUN時の版保存・採用切替だけは同じ仕組みを使う（版は`origin=unrecorded`）。設計は`docs/tdnet_provenance_design.md`を参照。
 
 ## データフロー
 
@@ -259,3 +263,4 @@ tests/
 - `forecast_revision_analysis` のLLM抽出はStage1（抽出・`responseSchema`で型固定・`temperature=0`）とStage2（推論・PDF本文は再送せずStage1の要約のみを入力・`temperature=0.2`）に分離している。`is_modified`はStage1のresponseSchemaに含めず、`prev_value`/`curr_value`の比較でコード側（`post_forecast_revision.py`・`main.py`の`_determine_extraction_status()`）が確定する。設計背景は `docs/forecast_revision_llm_pipeline_redesign.md` を参照
 - `forecast_revision_metrics` の自然キーは `(url, period_type, fiscal_year, consolidation_type, metric_name)` の複合ユニーク制約で担保する。`fiscal_year`（対象決算期の西暦年）・`consolidation_type`（`consolidated`=連結 / `non_consolidated`=単体・個別）がないと、同一期間・同一指標名で連結/単体や決算年度違いの行を区別できず重複を検出できない設計上の欠陥があったため追加した（詳細は `docs/forecast_revision.md` §7参照）
 - ログは3パイプラインとも `interface/logger.py` の `Logger` を共用するが、各`main.py`の先頭（他のimportより前）で `os.environ.setdefault("LOG_FILE", "...")` を設定することで出力先を分けている（`buyback_analysis.log` / `midterm_plan_analysis.log` / `forecast_revision_analysis.log`）。`get_pdf_data()` など複数パイプラインで共用しているモジュールも、実行中のパイプラインに応じて自動的に正しいログファイルへ振り分けられる。`LOG_FILE`未設定時は`app.log`（`Logger`のデフォルト）
+- LLM関数（`parse_text_by_llm`・`parse_pdf_by_llm`・`classify_midterm_by_llm`・業績予想Stage1/Stage2・中計キーワード）は、`generate_content()`の設定をモジュール定数`GENERATION_CONFIG`に置き、呼び出し直後に`report_llm_response(response)`で使用量を報告する。**出力の解析処理を変えたら、そのモジュールの`EXTRACTOR_VERSION`を上げること**（processing_runの再利用キーに含まれ、上げ忘れると古い解析結果が再利用される）。新しいLLM関数を追加する場合も同じ3点（`GENERATION_CONFIG`・`EXTRACTOR_VERSION`・`report_llm_response`）を備える

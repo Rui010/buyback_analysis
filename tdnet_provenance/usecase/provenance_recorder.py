@@ -1,4 +1,4 @@
-"""processing runの追記記録（tdnet-provenance-v1 §4.4・§4.5）。
+"""processing runの追記記録・再利用・使用量記録（tdnet-provenance-v1 §4.4・§4.5・§5.3）。
 
 `TDNET_PROVENANCE_ENABLED=true`のときだけ各パイプラインが`ProvenanceRecorder`を使う。
 falseのときは`run_llm_stage(None, ...)`がLLM関数をそのまま呼ぶだけで、DBにも触れない。
@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from buyback_analysis.consts.llm_model import LlmModel
+from buyback_analysis.interface.llm_usage import LlmUsage, capture_llm_usage
 from buyback_analysis.interface.logger import Logger
-from tdnet_provenance.models.base import ProvenanceBase
 from tdnet_provenance.models.processing_run import ProcessingRun
+from tdnet_provenance.models.run_output import RunOutput
 from tdnet_provenance.usecase.code_version import resolve_code_commit
 from tdnet_provenance.usecase.resolve_verified_source import (
     SourceVerificationError,
@@ -45,6 +45,59 @@ def text_hash(text: str) -> str:
 
 def prompt_file_hash(prompt_name: str) -> str:
     return hashlib.sha256((PROMPTS_DIR / prompt_name).read_bytes()).hexdigest()
+
+
+def describe_generation_config(config: Mapping[str, Any] | None) -> dict:
+    """generate_content()の設定をJSON化できる形にする。response_schema等のPydanticモデルは
+    クラス名とJSON Schemaのhashにする（スキーマを変えればreuse keyも変わる）。"""
+    described = {}
+    for key, value in (config or {}).items():
+        if isinstance(value, type) and hasattr(value, "model_json_schema"):
+            schema = json.dumps(value.model_json_schema(), ensure_ascii=False, sort_keys=True)
+            described[key] = {
+                "pydantic_model": f"{value.__module__}.{value.__qualname__}",
+                "schema_sha256": hashlib.sha256(schema.encode("utf-8")).hexdigest(),
+            }
+        else:
+            described[key] = value
+    return described
+
+
+def module_llm_settings(module) -> dict:
+    """LLM関数モジュールのGENERATION_CONFIG・EXTRACTOR_VERSION（runのgeneration_config・extractor_version・
+    reuse keyになる）。run_llm()へ**展開して渡す。"""
+    return {"generation_config": module.GENERATION_CONFIG, "extractor_version": module.EXTRACTOR_VERSION}
+
+
+ENV_PRICE_INPUT = "LLM_PRICE_INPUT_PER_1M_TOKENS"
+ENV_PRICE_OUTPUT = "LLM_PRICE_OUTPUT_PER_1M_TOKENS"
+ENV_PRICE_CURRENCY = "LLM_PRICE_CURRENCY"
+
+
+@dataclass(frozen=True)
+class LlmPricing:
+    """100万tokenあたりの単価。環境変数で指定したときだけ費用を計算する（単価はコードに持たない）。"""
+
+    input_per_million: float
+    output_per_million: float
+    currency: str
+
+    def cost(self, input_tokens: int, output_tokens: int) -> float:
+        return round(
+            input_tokens / 1_000_000 * self.input_per_million + output_tokens / 1_000_000 * self.output_per_million, 6
+        )
+
+    @classmethod
+    def from_env(cls, env) -> "LlmPricing | None":
+        values = [(env.get(name) or "").strip() for name in (ENV_PRICE_INPUT, ENV_PRICE_OUTPUT, ENV_PRICE_CURRENCY)]
+        if not any(values):
+            return None
+        if not all(values):
+            raise ValueError(f"{ENV_PRICE_INPUT}・{ENV_PRICE_OUTPUT}・{ENV_PRICE_CURRENCY}は3つとも指定してください")
+        try:
+            return cls(float(values[0]), float(values[1]), values[2])
+        except ValueError as exc:
+            raise ValueError(f"LLM単価が数値ではありません: {values[0]!r} / {values[1]!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -88,11 +141,14 @@ def _utc_now() -> datetime.datetime:
 
 
 class ProvenanceRecorder:
-    def __init__(self, session, code_commit: str, clock=_utc_now, resolver=None):
+    def __init__(self, session, code_commit: str, clock=_utc_now, resolver=None,
+                 force: bool = False, pricing: LlmPricing | None = None):
         self.session = session
         self.code_commit = code_commit
         self.clock = clock
         self.resolver = resolver or resolve_verified_source
+        self.force = force  # Trueなら同じreuse keyの成功runがあっても再利用せずLLMを呼ぶ
+        self.pricing = pricing
         self._document_run_ids: list[str] = []
         self._pending_retry_of: str | None = None
 
@@ -123,13 +179,31 @@ class ProvenanceRecorder:
         from tdnet_provenance.usecase.adopt_result import ensure_provenance_tables
 
         ensure_provenance_tables(session)
-        return cls(session, code_commit=resolve_code_commit(env=env))
+        return cls(
+            session,
+            code_commit=resolve_code_commit(env=env),
+            force=(env.get("RERUN_FORCE") or "false").lower() == "true",
+            pricing=LlmPricing.from_env(env),
+        )
 
     def _now(self) -> str:
         return self.clock().isoformat()
 
-    def _append(self, spec: RunSpec, *, status, started_at, error_code=None, outcome=None, outcome_reason=None):
+    def _append(self, spec: RunSpec, *, status, started_at, error_code=None, outcome=None, outcome_reason=None,
+                usage: LlmUsage | None = None, reused_run_id=None, reused_currency=None, output: str | None = None):
         run_id = str(uuid4())
+        input_tokens = output_tokens = estimated_cost = currency = request_id = None
+        if status == "reused":
+            # 再利用はLLMを呼ばないため、tokenと費用は0として計上する
+            input_tokens, output_tokens = 0, 0
+            if reused_currency:
+                estimated_cost, currency = 0.0, reused_currency
+        elif usage is not None:
+            input_tokens, output_tokens, request_id = usage.input_tokens, usage.output_tokens, usage.last_request_id
+            if self.pricing is not None:
+                estimated_cost = self.pricing.cost(input_tokens, output_tokens)
+                currency = self.pricing.currency
+        completed_at = self._now()
         row = ProcessingRun(
             run_id=run_id,
             url=spec.url,
@@ -151,11 +225,19 @@ class ProvenanceRecorder:
             outcome=outcome,
             outcome_reason=outcome_reason,
             started_at=started_at,
-            completed_at=self._now(),
+            completed_at=completed_at,
             retry_of_run_id=self._pending_retry_of,
+            reused_run_id=reused_run_id,
+            provider_request_id=request_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            estimated_cost=estimated_cost,
+            estimated_cost_currency=currency,
             error_code=error_code,
         )
         self.session.add(row)
+        if output is not None:
+            self.session.add(RunOutput(run_id=run_id, output=output, created_at=completed_at))
         try:
             self.session.commit()
         except SQLAlchemyError as exc:
@@ -175,7 +257,7 @@ class ProvenanceRecorder:
             run_kind="extract",
             stage=stage,
             code_commit=self.code_commit,
-            extractor_version=self.code_commit,  # 抽出器の論理版は未管理のため、コード版をそのまま版とする
+            extractor_version=self.code_commit,  # LLMを呼ばない処理はコード版をそのまま版とする
         )
 
     def record_source_failure(self, *, url, stage, error_code, source: VerifiedSource | None = None):
@@ -196,6 +278,16 @@ class ProvenanceRecorder:
                          status="failed", started_at=started_at, error_code=exc.error_code)
             return None
 
+    def _find_reusable(self, reuse_key: str):
+        """同じreuse keyで成功し、出力が保存されている最新のrunと出力。"""
+        return (
+            self.session.query(ProcessingRun, RunOutput)
+            .join(RunOutput, RunOutput.run_id == ProcessingRun.run_id)
+            .filter(ProcessingRun.reuse_key == reuse_key, ProcessingRun.status == "succeeded")
+            .order_by(ProcessingRun.completed_at.desc())
+            .first()
+        )
+
     def run_llm(
         self,
         *,
@@ -205,12 +297,14 @@ class ProvenanceRecorder:
         input_payload: Mapping[str, Any],
         call: Callable[[], Any],
         generation_config: Mapping[str, Any] | None = None,
+        extractor_version: str | None = None,
         is_success: Callable[[Any], bool] = lambda result: result is not None,
     ):
         """LLM stageを実行し、終了状態のrunを1行追記して結果を返す。
 
-        generation_configはStep 1では記録しない（{}）。LLM関数内の設定にはresponse_schema等の
-        JSON化できない値が含まれ、呼び出し側へ写すとずれるため、Step 3で関数から返す形にする。
+        同じreuse keyの成功runがあればLLMを呼ばずにその出力を返し、status=reusedのrunを記録する
+        （force=True、またはretryの最初のrunでは再利用しない）。generation_config・extractor_versionは
+        LLM関数モジュールのGENERATION_CONFIG・EXTRACTOR_VERSIONを渡す（省略時は{}・code_commit）。
         """
         spec = RunSpec(
             url=source.url,
@@ -221,25 +315,43 @@ class ProvenanceRecorder:
             run_kind="extract",
             stage=stage,
             code_commit=self.code_commit,
-            extractor_version=self.code_commit,  # 抽出器の論理版は未管理のため、コード版をそのまま版とする
+            extractor_version=extractor_version or self.code_commit,
             prompt_name=prompt_name,
             prompt_hash=prompt_file_hash(prompt_name),
             model_provider=MODEL_PROVIDER,
             model_name=LlmModel.LLM_MODEL_GEMINI.value,
-            generation_config=generation_config or {},
+            generation_config=describe_generation_config(generation_config),
         )
         started_at = self._now()
-        try:
-            result = call()
-        except BaseException as exc:  # LLM関数はAPIエラー時にSystemExitを送出する
+
+        if not self.force and self._pending_retry_of is None:
+            reusable = self._find_reusable(spec.reuse_key())
+            if reusable is not None:
+                original, stored = reusable
+                self._append(spec, status="reused", started_at=started_at, reused_run_id=original.run_id,
+                             reused_currency=original.estimated_cost_currency)
+                logger.info(f"[Provenance] 同じ条件の成功runを再利用しました [{stage}]: {source.url} run={original.run_id}")
+                return json.loads(stored.output)
+
+        with capture_llm_usage() as usage:
             try:
-                self._append(spec, status="failed", started_at=started_at, error_code=type(exc).__name__)
-            except RunPersistError as persist_error:
-                logger.error(f"[Provenance] {persist_error}")
-            raise
+                result = call()
+            except BaseException as exc:  # LLM関数はAPIエラー時にSystemExitを送出する
+                try:
+                    self._append(spec, status="failed", started_at=started_at,
+                                 error_code=type(exc).__name__, usage=usage)
+                except RunPersistError as persist_error:
+                    logger.error(f"[Provenance] {persist_error}")
+                raise
         succeeded = is_success(result)
+        output = None
+        if succeeded:
+            try:
+                output = json.dumps(result, ensure_ascii=False, sort_keys=True)
+            except (TypeError, ValueError) as exc:
+                logger.error(f"[Provenance] 出力をJSON化できないため再利用できません [{stage}]: {source.url} {exc}")
         self._append(spec, status="succeeded" if succeeded else "failed", started_at=started_at,
-                     error_code=None if succeeded else "no_result")
+                     error_code=None if succeeded else "no_result", usage=usage, output=output)
         return result
 
     def record_decision(self, *, url, stage, outcome, outcome_reason, input_payload: Mapping[str, Any]):
@@ -253,7 +365,7 @@ class ProvenanceRecorder:
             run_kind="route",
             stage=stage,
             code_commit=self.code_commit,
-            extractor_version=self.code_commit,  # 抽出器の論理版は未管理のため、コード版をそのまま版とする
+            extractor_version=self.code_commit,  # LLMを呼ばない処理はコード版をそのまま版とする
         )
         started_at = self._now()
         return self._append(spec, status="succeeded", started_at=started_at,
@@ -261,7 +373,7 @@ class ProvenanceRecorder:
 
 
 def run_llm_stage(recorder: ProvenanceRecorder | None, source: VerifiedSource | None, *, call, **kwargs):
-    """recorderがなければLLM関数をそのまま呼び、あればrunを記録して呼ぶ。"""
+    """recorderがなければLLM関数をそのまま呼び、あればrunを記録して呼ぶ（再利用を含む）。"""
     if recorder is None:
         return call()
     return recorder.run_llm(source=source, call=call, **kwargs)

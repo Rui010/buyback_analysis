@@ -66,7 +66,7 @@ def test_run_persist_failure_stops_before_result_is_returned(verified_pdf):
     # runを保存できなければ例外で止まり、呼び出し側は抽出結果を保存しない
     session = MagicMock()
     session.commit.side_effect = OperationalError("insert", {}, Exception("database is locked"))
-    recorder = ProvenanceRecorder(session, code_commit="0" * 40)
+    recorder = ProvenanceRecorder(session, code_commit="0" * 40, force=True)  # MagicMockで再利用検索をしない
     p_native, p_text, p_stage2, p_ctx = _patches()
     with p_native, p_text, p_stage2 as stage2, p_ctx:
         with pytest.raises(RunPersistError):
@@ -111,3 +111,19 @@ def test_not_withdrawn_records_nothing(make_recorder, runs):
 def test_withdrawn_route_without_recorder(runs):
     assert record_withdrawn_route(None, url=URL, title="業績予想の取り下げ") is True
     assert runs() == []
+
+
+def test_stage_runs_record_schema_in_generation_config(make_recorder, verified_pdf, provenance_session):
+    import json
+
+    from forecast_revision_analysis.usecase import infer_forecast_revision_stage2 as stage2_module
+
+    p_native, p_text, p_stage2, p_ctx = _patches(stage2={"data": {}})
+    with p_native, p_text, p_stage2, p_ctx:
+        run_stage1_and_stage2(make_recorder(verified_pdf), PdfInput(verified_pdf, None, "本文"), **DOC)
+
+    stage2 = provenance_session.query(ProcessingRun).filter(ProcessingRun.stage == "stage2").one()
+    assert stage2.extractor_version == stage2_module.EXTRACTOR_VERSION
+    config = json.loads(stage2.generation_config)
+    assert config["temperature"] == stage2_module.STAGE2_TEMPERATURE
+    assert config["response_schema"]["pydantic_model"].endswith("Stage2Inference")

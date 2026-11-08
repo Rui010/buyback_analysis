@@ -62,7 +62,7 @@ SQLiteは既存テーブルの主キーをALTERできないため、以下で移
 
 ## 2026-11-08: TDnet原典台帳・processing run
 
-`tdnet_source_documents`・`processing_runs`・`result_versions`・`result_adoptions` を新規作成する（既存テーブルは変更しない）。Step 1の2テーブルだけを作成済みのDBに再実行すると、不足している2テーブルだけを追加する。設計は `docs/tdnet_provenance_design.md` を参照。
+`tdnet_source_documents`・`processing_runs`・`result_versions`・`result_adoptions`・`run_outputs` を新規作成する（既存テーブルは変更しない）。一部だけ作成済みのDBに再実行すると、不足しているテーブルだけを追加する。設計は `docs/tdnet_provenance_design.md` を参照。
 
 **buyback_appの同期allowlist化が受入完了するまで、本番SQLiteへ実行しない。** 現行の同期処理は `bk_` 以外の全テーブルをPostgreSQLへ自動コピーするため。
 
@@ -76,7 +76,8 @@ SQLiteは既存テーブルの主キーをALTERできないため、以下で移
 2. SQLiteオンラインバックアップ（`<db>.bak-provenance-<日時>`）を同じディレクトリへ作成する
 3. 不足テーブルだけを作成する（同名テーブルの列集合がモデルと異なる場合は何も作らずに停止する）
 4. 新テーブルの列・NULL許容・主キー・索引がモデルと一致することを検証する
-5. 既存テーブルの行数と全行の内容hashが変わっていないことを検証し、変わっていれば異常終了する
+5. 履歴テーブル間の参照切れ（版のないadoption、runのない出力、再利用元・再試行元のないrun）がないことを検証する
+6. 既存テーブルの行数と全行の内容hashが変わっていないことを検証し、変わっていれば異常終了する
 
 再実行しても既存データは変わらない。復元はパイプライン停止中に次を実行する。
 

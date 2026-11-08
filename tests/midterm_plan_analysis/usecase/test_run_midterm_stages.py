@@ -78,3 +78,23 @@ def test_disabled_calls_llm_without_recording(provenance_session, runs):
         run_midterm_metrics(None, PdfInput(source=None, pdf_path=None, content="本文"), **DOC)
     text.assert_called_once()
     assert runs() == []
+
+
+@pytest.mark.parametrize("native", [True, False])
+def test_metrics_run_records_module_version_and_config(make_recorder, verified_pdf, provenance_session, native):
+    import json
+
+    from buyback_analysis.usecase import parse_pdf_by_llm as pdf_module
+    from buyback_analysis.usecase import parse_text_by_llm as text_module
+    from tdnet_provenance.models.processing_run import ProcessingRun
+
+    module = pdf_module if native else text_module
+    pdf_input = _native(verified_pdf) if native else _text(verified_pdf)
+    with patch(f"{MODULE}.parse_pdf_by_llm", return_value={"data": {}}), patch(
+        f"{MODULE}.parse_text_by_llm", return_value={"data": {}}
+    ):
+        run_midterm_metrics(make_recorder(verified_pdf), pdf_input, **DOC)
+
+    run = provenance_session.query(ProcessingRun).one()
+    assert run.extractor_version == module.EXTRACTOR_VERSION
+    assert json.loads(run.generation_config) == module.GENERATION_CONFIG

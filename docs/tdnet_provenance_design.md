@@ -1,4 +1,4 @@
-# TDnet原典hash・processing run記録・結果version（Step 1・2）
+# TDnet原典hash・processing run記録・結果version・再利用と費用（Step 1〜3）
 
 仕様: [docs/upstream/tdnet-provenance/buyback-analysis-tdnet-provenance.md](upstream/tdnet-provenance/buyback-analysis-tdnet-provenance.md)（契約版 `tdnet-provenance-v1`）。本書は仕様に対する本リポジトリ側の実装判断だけを記す。
 
@@ -14,11 +14,12 @@
 
 ## テーブル
 
-`tdnet_provenance/models/` の4テーブルは専用の `ProvenanceBase` に登録しており、`init_db()`（`Base.metadata.create_all()`）では作成されない。作成はmigrationスクリプトだけが行う。
+`tdnet_provenance/models/` の5テーブルは専用の `ProvenanceBase` に登録しており、`init_db()`（`Base.metadata.create_all()`）では作成されない。作成はmigrationスクリプトだけが行う。
 
 - `tdnet_source_documents`（運用原典台帳）: URLごとに1行。初回処理時に登録し、以後は更新・削除しない
 - `processing_runs`: 開始したstageごとに終了時に1行INSERTする。token・費用・reuse列はStep 3用で、後から列を追加しないためにNULL許容で先に用意している
 - `result_versions`: 1文書の抽出結果1回分。現行結果テーブルに書いた行そのものをJSON（`payload`）で持ち、作ったrunのIDを `run_ids` に持つ。更新・削除しない
+- `run_outputs`: 成功したLLM runの出力（LLM関数の戻り値のJSON）。同じ条件のrunを再利用するときに返す
 - `result_adoptions`: 採用の追記記録。URL・result_typeごとに最新の行が現在の採用版で、次の行の `adopted_at` までがその版の採用期間
 
 ## 処理順序
@@ -57,13 +58,10 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 - 成否は、LLM関数が `None` を返したら（分類は `"failed"` を返したら）`failed` / `no_result`、`SystemExit` 等の例外なら `failed` / 例外のクラス名とし、例外はそのまま再送出する
 - run自体を保存できなかった場合は `RunPersistError` でパイプラインを止める。これは、runのない抽出結果を保存しないため
 - 中計の `withdrawn` / `postponed` / `no_targets` はmetrics・classificationのLLMの後に決まるため、判断runにはしない（仕様 §4.5）
-- `extractor_version`: 抽出器の論理版はまだ管理していないため、`code_commit` と同じ値を明示的に保存する（reuse keyの値は仕様の代替規則と同じになる）
+- `extractor_version`: LLM stageはLLM関数モジュールの `EXTRACTOR_VERSION`（例 `forecast_revision_stage1:1`）。判断runと原典失敗runは `code_commit`
+- `generation_config`: LLM関数モジュールの `GENERATION_CONFIG`（`generate_content()` に渡す値と同じ定数）。`response_schema` 等のPydanticモデルはクラス名とJSON Schemaのhashにして記録する
 - `code_commit`: `CODE_COMMIT` → `git rev-parse HEAD` の順で取得する。build manifestと `artifact-sha256:` は、本番の反映方法を確認してから実装する
 
-## Step 1で記録しない項目
-
-- `generation_config`: `{}` で記録する。LLM関数内の設定には `response_schema` などJSON化できない値が含まれ、呼び出し側へ写すとずれるため、Step 3でLLM関数から返す形にする
-- token・費用・request ID: Step 3で対応する
 
 ## 結果versionと採用切替（Step 2）
 
@@ -80,7 +78,6 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 - 現行結果がfailedのURLを再処理するとき（会社予想のfailed再試行・RERUN）は、そのURLの直近のfailed runを今回最初のrunの `retry_of_run_id` にする。failed runは削除しない
 - `backfill_keywords.py` は既存の計画行を変えずにキーワードを追加し、計画＋追加キーワードを新しい版として採用する
 - 中計の保存は、キーワードと計画を1つの版にまとめる。採用切替中にキーワードの保存が失敗した場合は版を作らない（従来経路はキーワードの失敗に関係なく計画を保存する）
-- `--force`（reuseせず新runを作る指定）はStep 3のreuseと合わせて扱う。現状のRERUNは常に新runを作る
 
 ### 自己株買い・業績ベースラインのRERUN
 
@@ -89,3 +86,21 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 - 版は `run_ids=[]`・`origin=unrecorded`（run記録のない抽出結果）になる。依頼元仕様の外で本リポジトリが追加した範囲
 - 自己株買い（`BuybackResultWriter`）: RERUN時はDBの判定結果を使わず種別判定からやり直し、判定結果は採用まで保存しない。保存成功時は `is_checked`（`parse_status=saved`）とIRテーブルの行を1つの版として採用する。判定結果が対象外になった場合も `is_checked`（`skipped`）だけの版として採用する（旧IR行はlegacy版に残る）。抽出・保存に失敗した場合は旧結果に触れない。版の状態列は `is_checked.parse_status`
 - 業績ベースライン（`save_earnings_result`）: 中計・会社予想と同じ（failedは旧採用を維持、現行行がなければfailed行を書く）
+
+## 再利用と使用量・費用（Step 3）
+
+### 再利用
+
+`run_llm()` は、同じreuse key（`source_hash`・`input_hash`・`run_kind`・`stage`・`extractor_version`・`prompt_hash`・モデル・`generation_config`）で成功し、出力が `run_outputs` に保存されているrunがあれば、LLMを呼ばずにその出力を返し、`status=reused`・`reused_run_id` のrunを記録する（token・費用は0）。
+
+- `extractor_version` に `code_commit` を使うとcommitのたびに再利用が効かなくなるため、LLM関数モジュールごとの `EXTRACTOR_VERSION` を使う。**LLMの出力を解析する処理（JSON整形・null正規化・スキーマ検証後の加工など）を変えたら、そのモジュールの `EXTRACTOR_VERSION` を上げること。** 上げ忘れると古い解析結果が再利用される。プロンプト・モデル・生成設定（スキーマを含む）・PDF・入力の変更はreuse keyに自動で反映される
+- 再利用しない場合: `RERUN_FORCE=true`（全stageでLLMを呼び直す）、retryの最初のrun（失敗の再試行は呼び直す）、失敗run（出力を保存しない）
+- RERUNで全stageが再利用された場合も、新しい版と採用は記録する（その時点で再処理したことを残す）
+- 出力がJSON化できない場合は保存せず、そのrunは再利用されない（エラーログを出す）
+
+### 使用量・費用
+
+- 8つのLLM関数は `generate_content()` の直後に `report_llm_response(response)` を呼ぶ。`run_llm()` が `capture_llm_usage()` の中でLLM関数を呼ぶため、戻り値を変えずにtoken数とresponse IDを受け取れる。run記録をしない経路（自己株買い等）では何もしない
+- `input_tokens` は `prompt_token_count`、`output_tokens` は `candidates_token_count` と `thoughts_token_count` の合計。関数内のリトライで成功応答が複数あれば合計し、`provider_request_id` は最後の応答のID。例外で終わった呼び出しでも、それまでに報告された分を失敗runに記録する
+- 費用は `LLM_PRICE_INPUT_PER_1M_TOKENS`・`LLM_PRICE_OUTPUT_PER_1M_TOKENS`・`LLM_PRICE_CURRENCY` の3つを指定したときだけ計算する（単価はコードに持たない。一部だけの指定は起動時エラー）。未指定ならtoken数だけを記録し、費用はNULL
+- 文書単位の集計は `aggregate_document_usage()`、表示は `python scripts/report_llm_usage.py [--since 日時] [URL ...]`

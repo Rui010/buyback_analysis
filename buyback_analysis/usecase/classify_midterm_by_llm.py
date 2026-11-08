@@ -7,12 +7,18 @@ from google import genai
 from google.genai.errors import APIError
 
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
+from buyback_analysis.interface.llm_usage import report_llm_response
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.llm_model import LlmModel
 
 logger = Logger()
 
 PROMPT_FILENAME = "classify_midterm.md"
+
+# generate_content()に渡す設定。processing_runのgeneration_config・reuse keyにも同じ値を使う
+GENERATION_CONFIG = {}
+# 出力の解析処理（JSON整形・null正規化等）を変えたら上げる。reuse keyに含まれ、古い解析結果の再利用を防ぐ
+EXTRACTOR_VERSION = "classify_midterm_by_llm:1"
 
 
 def classify_midterm_by_llm(
@@ -43,7 +49,9 @@ def classify_midterm_by_llm(
             response = client.models.generate_content(
                 model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=prompt,
+                config=GENERATION_CONFIG or None,  # 空なら従来どおり設定を渡さない
             )
+            report_llm_response(response)
             time.sleep(1)
             cleaned_text = re.sub(
                 r"^```json\s*|\s*```$", "", response.text.strip(), flags=re.DOTALL

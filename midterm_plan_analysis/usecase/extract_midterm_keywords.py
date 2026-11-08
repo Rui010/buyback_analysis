@@ -10,6 +10,7 @@ from google.genai.errors import APIError
 
 from buyback_analysis.consts.llm_model import LlmModel
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
+from buyback_analysis.interface.llm_usage import report_llm_response
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.usecase.parse_text_by_llm import _sanitize_null_strings
 from midterm_plan_analysis.usecase.schemas import MidtermKeywordExtraction
@@ -19,6 +20,16 @@ logger = Logger()
 PROMPT_FILENAME = "midterm_keywords.md"
 
 KEYWORDS_TEMPERATURE = 0.0
+
+# generate_content()に渡す設定。processing_runのgeneration_config・reuse keyにも同じ値を使う
+GENERATION_CONFIG = {
+    "response_mime_type": "application/json",
+    "response_schema": MidtermKeywordExtraction,
+    "temperature": KEYWORDS_TEMPERATURE,
+    "max_output_tokens": 2048,
+}
+# 出力の解析処理（JSON整形・null正規化等）を変えたら上げる。reuse keyに含まれ、古い解析結果の再利用を防ぐ
+EXTRACTOR_VERSION = "midterm_keywords:1"
 
 
 def extract_midterm_keywords(title: str, content: str, code: str, name: str) -> Optional[Dict[str, Any]]:
@@ -46,13 +57,9 @@ def extract_midterm_keywords(title: str, content: str, code: str, name: str) -> 
             response = client.models.generate_content(
                 model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": MidtermKeywordExtraction,
-                    "temperature": KEYWORDS_TEMPERATURE,
-                    "max_output_tokens": 2048,
-                },
+                config=GENERATION_CONFIG,
             )
+            report_llm_response(response)
             time.sleep(1)  # レート制限対策のためのスリープ
             cleaned_text = re.sub(
                 r"^```json\s*|\s*```$", "", response.text.strip(), flags=re.DOTALL

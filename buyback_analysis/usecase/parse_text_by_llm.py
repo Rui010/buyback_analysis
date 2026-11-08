@@ -9,10 +9,16 @@ from google.genai.errors import APIError
 from typing import Any, Dict, Optional
 
 from buyback_analysis.interface.load_prompt_template import load_prompt_template
+from buyback_analysis.interface.llm_usage import report_llm_response
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.consts.llm_model import LlmModel
 
 logger = Logger()
+
+# generate_content()に渡す設定。processing_runのgeneration_config・reuse keyにも同じ値を使う
+GENERATION_CONFIG = {"max_output_tokens": 16384}
+# 出力の解析処理（JSON整形・null正規化等）を変えたら上げる。reuse keyに含まれ、古い解析結果の再利用を防ぐ
+EXTRACTOR_VERSION = "parse_text_by_llm:1"
 
 
 def _sanitize_null_strings(obj: Any) -> Any:
@@ -54,8 +60,9 @@ def parse_text_by_llm(
             response = client.models.generate_content(
                 model=LlmModel.LLM_MODEL_GEMINI.value,
                 contents=prompt,
-                config={"max_output_tokens": 16384},
+                config=GENERATION_CONFIG,
             )
+            report_llm_response(response)
             time.sleep(1)  # レート制限対策のためのスリープ
             # Markdownコードブロック（```json ～ ```）を除去
             cleaned_text = re.sub(
