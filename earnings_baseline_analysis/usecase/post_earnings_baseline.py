@@ -96,6 +96,7 @@ def post_earnings_baseline(
     url: str,
     disclosure_date: str,
     extraction_status: str,
+    commit: bool = True,
 ) -> bool:
     """
     決算短信の起点データ（前期実績・当期初回予想）をSQLiteに保存する。
@@ -107,6 +108,8 @@ def post_earnings_baseline(
         url: ソースURL
         disclosure_date: 開示日
         extraction_status: ok / no_data / failed
+        commit: Falseならcommitせずflushだけ行い、失敗時のrollbackも呼び出し側に任せる
+            （RERUN時の採用版切替のトランザクションに含めるため）
 
     Returns:
         True: 保存成功 / False: 保存失敗
@@ -154,14 +157,16 @@ def post_earnings_baseline(
             )
             session.add(metric)
 
-        session.commit()
+        session.commit() if commit else session.flush()
         logger.info(f"決算短信の起点データを保存しました: {code} - {url}")
         return True
     except IntegrityError as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.error(f"{describe_integrity_error(e)}により保存に失敗しました: {code} - {url} - {e}")
         return False
     except Exception as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.error(f"保存に失敗しました: {code} - {url} - {e}")
         return False

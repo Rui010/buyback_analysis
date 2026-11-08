@@ -33,6 +33,8 @@ def session():
 def recorder(session):
     r = ProvenanceRecorder(session, code_commit="0" * 40, clock=lambda: NOW)
     r.start_document(URL)
+    # 採用される版の前には必ずrunがある（版のrun_idsになる）
+    r.record_decision(url=URL, stage="eligibility", outcome="test", outcome_reason="test", input_payload={})
     return r
 
 

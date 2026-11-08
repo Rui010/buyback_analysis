@@ -4,7 +4,7 @@
 
 ## 有効化
 
-`TDNET_PROVENANCE_ENABLED=true` のときだけ、中計（`main.py`・`backfill_keywords.py`）と会社予想修正（`main.py`）が台帳照合・run記録・結果versionの保存を行う。省略時（`false`）は従来どおりに動き、新しいテーブルにも触れない。ただし `RERUN_URLS` は旧結果を版として残すため有効時だけ使え、無効時に指定すると起動時に停止する。
+`TDNET_PROVENANCE_ENABLED=true` のときだけ、中計（`main.py`・`backfill_keywords.py`）と会社予想修正（`main.py`）が台帳照合・run記録・結果versionの保存を行う。省略時（`false`）は従来どおりに動き、新しいテーブルにも触れない。ただし `RERUN_URLS` は旧結果を版として残すため有効時だけ使え、無効時に指定すると起動時に停止する（自己株買い・業績ベースラインも同じ）。
 
 有効化の前提:
 
@@ -81,3 +81,11 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 - `backfill_keywords.py` は既存の計画行を変えずにキーワードを追加し、計画＋追加キーワードを新しい版として採用する
 - 中計の保存は、キーワードと計画を1つの版にまとめる。採用切替中にキーワードの保存が失敗した場合は版を作らない（従来経路はキーワードの失敗に関係なく計画を保存する）
 - `--force`（reuseせず新runを作る指定）はStep 3のreuseと合わせて扱う。現状のRERUNは常に新runを作る
+
+### 自己株買い・業績ベースラインのRERUN
+
+仕様の対象外（台帳照合・run記録は行わない）だが、RERUNで先に削除すると失敗時に旧結果が失われるため、RERUN時の保存だけ同じ `adopt_result()` を使う。通常処理は従来どおり（削除を伴わないため）。
+
+- 版は `run_ids=[]`・`origin=unrecorded`（run記録のない抽出結果）になる。依頼元仕様の外で本リポジトリが追加した範囲
+- 自己株買い（`BuybackResultWriter`）: RERUN時はDBの判定結果を使わず種別判定からやり直し、判定結果は採用まで保存しない。保存成功時は `is_checked`（`parse_status=saved`）とIRテーブルの行を1つの版として採用する。判定結果が対象外になった場合も `is_checked`（`skipped`）だけの版として採用する（旧IR行はlegacy版に残る）。抽出・保存に失敗した場合は旧結果に触れない。版の状態列は `is_checked.parse_status`
+- 業績ベースライン（`save_earnings_result`）: 中計・会社予想と同じ（failedは旧採用を維持、現行行がなければfailed行を書く）

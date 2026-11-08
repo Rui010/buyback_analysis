@@ -23,12 +23,14 @@ def describe_integrity_error(e: IntegrityError) -> str:
     return "制約違反"
 
 
-def post_data(session: Session, data: dict) -> bool:
+def post_data(session: Session, data: dict, commit: bool = True) -> bool:
     """
     データをSQLiteデータベースに保存する関数
 
     Args:
         data (dict): 保存するデータ（辞書形式）
+        commit: Falseならcommitせずflushだけ行い、失敗時のrollbackも呼び出し側に任せる
+            （RERUN時の採用版切替のトランザクションに含めるため）
 
     Raises:
         ValueError: 必要な環境変数が設定されていない場合
@@ -74,14 +76,16 @@ def post_data(session: Session, data: dict) -> bool:
         instance = ModelClass(**filtered)
         session.add(instance)
 
-        session.commit()
+        session.commit() if commit else session.flush()
         logger.info("データが正常に保存されました")
         return True
     except IntegrityError as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.error(f"{describe_integrity_error(e)}により保存されませんでした: {e}")
         return False
     except Exception as e:
-        session.rollback()
+        if commit:
+            session.rollback()
         logger.log_failed_data(data, str(e))
         raise

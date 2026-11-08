@@ -177,3 +177,24 @@ def test_rerun_requires_provenance():
         require_provenance_for_rerun(None, ["https://x/a.pdf"])
     require_provenance_for_rerun(None, [])
     require_provenance_for_rerun(object(), ["https://x/a.pdf"])
+
+
+def test_history_enabled_from_env(session):
+    from tdnet_provenance.usecase.adopt_result import history_enabled_from_env
+
+    assert history_enabled_from_env(session, env={}) is False
+    assert history_enabled_from_env(session, env={"TDNET_PROVENANCE_ENABLED": "true"}) is True
+
+
+def test_history_enabled_requires_migrated_tables():
+    from tdnet_provenance.usecase.adopt_result import history_enabled_from_env
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with sessionmaker(bind=engine, future=True)() as empty:
+        with pytest.raises(RuntimeError, match="migrate_tdnet_provenance_tables"):
+            history_enabled_from_env(empty, env={"TDNET_PROVENANCE_ENABLED": "true"})
+
+
+def test_version_without_runs_is_unrecorded(session):
+    assert _adopt(session, _writer(session, "新計画"), run_ids=[]) is True
+    assert [v.origin for v in _versions(session)] == ["unrecorded"]

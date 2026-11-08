@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 import buyback_analysis.main as main_module
+import buyback_analysis.usecase.buyback_result_writer as writer_module
 
 
 def test_integrity_conflict_is_not_counted_as_saved_and_notifies(monkeypatch):
@@ -37,7 +38,9 @@ def test_integrity_conflict_is_not_counted_as_saved_and_notifies(monkeypatch):
         "parse_text_by_llm",
         MagicMock(return_value={"data": {"code": "1803", "buyback_shares": 1, "buyback_amount_yen": 1}}),
     )
-    monkeypatch.setattr(main_module, "post_data", MagicMock(return_value=False))
+    # 保存とparse_statusの更新はBuybackResultWriter経由で呼ばれる
+    monkeypatch.setattr(writer_module, "post_data", MagicMock(return_value=False))
+    monkeypatch.setattr(writer_module, "update_parse_status", update_parse_status)
     monkeypatch.setattr(main_module, "update_parse_status", update_parse_status)
     monkeypatch.setattr(main_module, "notify_error", notify_error)
     monkeypatch.setattr(main_module, "notify_success", MagicMock())

@@ -57,7 +57,7 @@ python -m midterm_plan_analysis.backfill_keywords
 | `MIDTERM_USE_NATIVE_PDF` | `true` でmidterm_plan_analysisをネイティブPDF方式に切り替え（省略時は`false`） |
 | `MIDTERM_EXTRACT_KEYWORDS` | `true` でmidterm_plan_analysisに戦略テーマ・重点施策のキーワード抽出（別LLMコール）を追加する（省略時は`false`） |
 | `MIDTERM_BACKFILL_KEYWORDS_LIMIT` | `backfill_keywords.py`実行時に1回で処理するmidterm_plans行数の上限（省略時は`50`） |
-| `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLを強制再処理する。中計・会社予想修正は旧結果を削除せず、成功時だけ採用版を切り替える（`TDNET_PROVENANCE_ENABLED=true`が必要。無効時は起動時に停止）。自己株買い・業績ベースラインは従来どおり既存データを削除してから再処理する |
+| `RERUN_URLS` | カンマ区切りのURLリスト。指定したURLを強制再処理する（全パイプライン共通）。旧結果は削除せず、成功時だけ採用版を切り替えて旧結果を`result_versions`に残す。`TDNET_PROVENANCE_ENABLED=true`と`scripts/migrate_tdnet_provenance_tables.py`の実行が必要（無効時は起動時に停止）。自己株買いは文書種別の判定からやり直す |
 | `TDNET_PROVENANCE_ENABLED` | `true` で中計・会社予想修正（`backfill_keywords.py`含む）がPDFを運用原典台帳と照合し、`processing_runs`へrunを記録する（省略時は`false`）。事前に`scripts/migrate_tdnet_provenance_tables.py`の実行が必要 |
 | `CODE_COMMIT` | runに記録する40桁のGit commit ID。未設定時は`git rev-parse HEAD`（`TDNET_PROVENANCE_ENABLED=true`のときのみ使用） |
 
@@ -162,7 +162,7 @@ tdnet_provenance/
     └── migrate_provenance_tables.py
 ```
 
-`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1・2にあたる。保存は`midterm_plan_analysis/usecase/save_midterm_result.py`・`forecast_revision_analysis/usecase/save_forecast_result.py`経由で行う。設計は`docs/tdnet_provenance_design.md`を参照。
+`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1・2にあたる。保存は`midterm_plan_analysis/usecase/save_midterm_result.py`・`forecast_revision_analysis/usecase/save_forecast_result.py`経由で行う。自己株買い（`buyback_analysis/usecase/buyback_result_writer.py`）・業績ベースライン（`earnings_baseline_analysis/usecase/save_earnings_result.py`）は台帳照合・run記録の対象外だが、RERUN時の版保存・採用切替だけは同じ仕組みを使う（版は`origin=unrecorded`）。設計は`docs/tdnet_provenance_design.md`を参照。
 
 ## データフロー
 

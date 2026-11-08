@@ -8,7 +8,6 @@ from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
 from buyback_analysis.usecase.data_exists import data_exists_in_ir_tables
 from buyback_analysis.interface.logger import Logger
-from buyback_analysis.usecase.post_data import post_data
 from buyback_analysis.usecase.get_tdnet_buyback_data import get_tdnet_buyback_data
 from buyback_analysis.usecase.get_pdf_data import get_pdf_data
 from buyback_analysis.usecase.get_pdf_path import get_pdf_path
@@ -19,10 +18,11 @@ from buyback_analysis.usecase.detect_type import (
     get_detect_type_in_db,
 )
 from buyback_analysis.consts.detect_type import DetectType
-from buyback_analysis.usecase.post_url import post_url, update_parse_status
-from buyback_analysis.usecase.delete_data import delete_by_url
+from buyback_analysis.usecase.post_url import update_parse_status
+from buyback_analysis.usecase.buyback_result_writer import BuybackResultWriter
 from buyback_analysis.usecase.get_tdnet_buyback_data import get_tdnet_buyback_data_by_urls
 from buyback_analysis.interface.notifier import notify_success, notify_error
+from tdnet_provenance.usecase.adopt_result import history_enabled_from_env, require_provenance_for_rerun
 
 load_dotenv()
 
@@ -72,6 +72,8 @@ def main():
 
     try:
         init_db()  # DBの初期化
+        require_provenance_for_rerun(history_enabled_from_env(session), RERUN_URLS)
+        writer = BuybackResultWriter(session, rerun=bool(RERUN_URLS))
         postgresql_engine = get_database_engine()
 
         # 開始日・終了日の決定
@@ -88,9 +90,8 @@ def main():
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
 
         if RERUN_URLS:
-            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
-            for url in RERUN_URLS:
-                delete_by_url(session, url)
+            # 旧結果は削除しない。文書種別の判定からやり直し、成功した場合だけ採用版を切り替える
+            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを再処理します（成功時のみ採用版を切り替え）")
             df = get_tdnet_buyback_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
         else:
             df = get_tdnet_buyback_data(
@@ -105,7 +106,8 @@ def main():
             total_processed += 1
 
             # saved/skipped は PDF取得前にスキップ（不要なダウンロードを回避）
-            detect_type_str = get_detect_type_in_db(session, row["link"])
+            # RERUN時はDBの判定結果を使わず、種別判定からやり直す
+            detect_type_str = None if RERUN_URLS else get_detect_type_in_db(session, row["link"])
             if detect_type_str is not None:
                 try:
                     detect_type_enum = DetectType(detect_type_str)
@@ -148,12 +150,7 @@ def main():
                     logger.error(f"タイプの判定に失敗しました: {row['link']}")
                     failed_parse += 1
                     continue
-                post_url(
-                    session,
-                    row["code"],
-                    row["link"],
-                    detect_type_enum.value,
-                )
+                writer.register_type(row["code"], row["link"], detect_type_enum.value)
                 logger.info(f"{row["code"]} - {row["title"]} - {detect_type_enum.value}")
             else:
                 try:
@@ -163,7 +160,7 @@ def main():
                     failed_parse += 1
                     continue
 
-            if data_exists_in_ir_tables(session, row["link"]):
+            if not RERUN_URLS and data_exists_in_ir_tables(session, row["link"]):
                 logger.info(f"データが既に存在します: {row['code']} - {row['date']}")
                 update_parse_status(session, row["link"], "saved")
                 skipped_duplicates += 1
@@ -177,7 +174,7 @@ def main():
                 DetectType.RETIREMENT,
             ]:
                 logger.info(f"対象外スキップ: {row['title']}")
-                update_parse_status(session, row["link"], "skipped")
+                writer.mark(row["link"], "skipped")
                 skipped_out_of_scope += 1
                 continue
 
@@ -236,24 +233,24 @@ def main():
             logger.info(f"Parsed object: {obj}")
             if obj is None or obj.get("data") is None:
                 logger.error(f"LLMによるパースに失敗しました: {row['link']}")
-                update_parse_status(session, row["link"], "failed")
+                writer.mark(row["link"], "failed")
                 failed_parse += 1
                 continue
             obj["data"]["url"] = row["link"]
             obj["data"]["disclosure_date"] = row["date"].strftime("%Y-%m-%d")
             try:
-                saved = post_data(session, obj)
+                saved = writer.save(row["link"], obj)
             except Exception as e:
                 logger.error(f"データの保存に失敗しました: {row['link']} - {e}")
-                update_parse_status(session, row["link"], "failed")
+                writer.mark(row["link"], "failed")
                 failed_parse += 1
                 continue
             if not saved:
                 logger.error(f"DB制約違反によりデータを保存できませんでした: {row['link']}")
-                update_parse_status(session, row["link"], "failed")
+                writer.mark(row["link"], "failed")
                 failed_integrity += 1
                 continue
-            update_parse_status(session, row["link"], "saved")
+            writer.mark(row["link"], "saved")
             logger.info(f"データを保存しました: {row['code']} - {row['date']}")
             successful_saves += 1
 

@@ -120,12 +120,9 @@ class ProvenanceRecorder:
         env = os.environ if env is None else env
         if (env.get("TDNET_PROVENANCE_ENABLED") or "false").lower() != "true":
             return None
-        existing = set(inspect(session.get_bind()).get_table_names())
-        missing = sorted(set(ProvenanceBase.metadata.tables) - existing)
-        if missing:
-            raise RuntimeError(
-                f"履歴テーブルがありません: {missing}。scripts/migrate_tdnet_provenance_tables.py を先に実行してください"
-            )
+        from tdnet_provenance.usecase.adopt_result import ensure_provenance_tables
+
+        ensure_provenance_tables(session)
         return cls(session, code_commit=resolve_code_commit(env=env))
 
     def _now(self) -> str:

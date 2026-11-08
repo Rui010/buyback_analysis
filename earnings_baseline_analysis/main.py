@@ -17,8 +17,9 @@ from earnings_baseline_analysis.usecase.get_tdnet_earnings_baseline_data import 
     get_tdnet_earnings_baseline_data,
     get_tdnet_earnings_baseline_data_by_urls,
 )
-from earnings_baseline_analysis.usecase.post_earnings_baseline import post_earnings_baseline
+from earnings_baseline_analysis.usecase.save_earnings_result import save_earnings_result
 from earnings_baseline_analysis.usecase.notify_earnings_baseline_corrections import notify_earnings_baseline_corrections
+from tdnet_provenance.usecase.adopt_result import history_enabled_from_env, require_provenance_for_rerun
 
 load_dotenv()
 
@@ -59,6 +60,7 @@ def main():
 
     try:
         init_db()
+        require_provenance_for_rerun(history_enabled_from_env(session), RERUN_URLS)
         postgresql_engine = get_database_engine()
 
         if SYSTEM_START_DATE and SYSTEM_END_DATE:
@@ -72,11 +74,8 @@ def main():
             logger.info(f"データ取得期間（過去{DAYS_BACK}日）: {start_date} ～ {end_date}")
 
         if RERUN_URLS:
-            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを対象に既存データを削除して再処理します")
-            for url in RERUN_URLS:
-                session.query(EarningsBaselineMetric).filter(EarningsBaselineMetric.url == url).delete()
-                session.query(EarningsBaseline).filter(EarningsBaseline.url == url).delete()
-            session.commit()
+            # 旧結果は削除しない。新しい抽出が成功した場合だけ採用版を切り替える
+            logger.info(f"強制再実行モード: {len(RERUN_URLS)}件のURLを再処理します（成功時のみ採用版を切り替え）")
             df = get_tdnet_earnings_baseline_data_by_urls(engine=postgresql_engine, urls=RERUN_URLS)
         else:
             df = get_tdnet_earnings_baseline_data(
@@ -95,7 +94,7 @@ def main():
             name = row["name"]
             date_str = row["date"].strftime("%Y%m%d")
 
-            if _already_exists(session, code, url):
+            if not RERUN_URLS and _already_exists(session, code, url):
                 logger.info(f"処理済みのためスキップ: {code} - {url}")
                 skipped_duplicates += 1
                 continue
@@ -107,9 +106,9 @@ def main():
             )
             if pdf_path is None:
                 logger.error(f"PDFの取得に失敗しました: {url}")
-                post_earnings_baseline(
-                    session=session, data={}, code=code, url=url,
-                    disclosure_date=disclosure_date, extraction_status="failed",
+                save_earnings_result(
+                    session, rerun=bool(RERUN_URLS), code=code, url=url,
+                    disclosure_date=disclosure_date, data={}, extraction_status="failed",
                 )
                 failed_pdf += 1
                 continue
@@ -127,13 +126,9 @@ def main():
                 logger.error(f"LLMによるパースに失敗しました: {url}")
                 failed_parse += 1
 
-            saved = post_earnings_baseline(
-                session=session,
-                data=obj or {},
-                code=code,
-                url=url,
-                disclosure_date=disclosure_date,
-                extraction_status=extraction_status,
+            saved = save_earnings_result(
+                session, rerun=bool(RERUN_URLS), code=code, url=url,
+                disclosure_date=disclosure_date, data=obj or {}, extraction_status=extraction_status,
             )
             if saved:
                 logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
