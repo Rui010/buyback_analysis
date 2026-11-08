@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 
 from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
-from buyback_analysis.usecase.get_pdf_data import extract_pdf_text, get_pdf_data
-from buyback_analysis.usecase.get_pdf_path import get_pdf_path
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.interface.notifier import notify_success, notify_error
 from forecast_revision_analysis.models.forecast_revision_detail import ForecastRevisionDetail  # noqa: F401 init_db() に登録するためインポート
@@ -19,16 +17,13 @@ from forecast_revision_analysis.usecase.get_tdnet_forecast_revision_data import 
     get_tdnet_forecast_revision_data_by_urls,
 )
 from forecast_revision_analysis.usecase.post_forecast_revision import post_forecast_revision, check_missing_fields, _to_float
-from forecast_revision_analysis.usecase.extract_forecast_revision_stage1 import extract_forecast_revision_stage1
-from forecast_revision_analysis.usecase.extract_forecast_revision_stage1_native import extract_forecast_revision_stage1_native
-from forecast_revision_analysis.usecase.build_stage2_context import build_stage2_context
-from forecast_revision_analysis.usecase.infer_forecast_revision_stage2 import infer_forecast_revision_stage2
-from forecast_revision_analysis.usecase.merge_stage_results import merge_stage_results
 from forecast_revision_analysis.usecase.retry_failed import already_processed, get_failed_urls
-from forecast_revision_analysis.usecase import extract_forecast_revision_stage1 as stage1_text_module
-from forecast_revision_analysis.usecase import extract_forecast_revision_stage1_native as stage1_native_module
-from forecast_revision_analysis.usecase import infer_forecast_revision_stage2 as stage2_module
-from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder, run_llm_stage, text_hash
+from forecast_revision_analysis.usecase.run_forecast_revision_stages import (
+    record_withdrawn_route,
+    run_stage1_and_stage2,
+)
+from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
+from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
 load_dotenv()
 
@@ -39,11 +34,6 @@ SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")
 USE_NATIVE_PDF = os.getenv("FORECAST_REVISION_USE_NATIVE_PDF", "false").lower() == "true"
 RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
 
-WITHDRAWN_KEYWORDS = [
-    "予想の取り下げ", "予想を取り下げ",
-    "予想の廃止", "予想を廃止",
-    "予想の撤回", "予想を撤回",
-]
 CORRECTION_KEYWORDS = ["訂正"]
 
 logger = Logger()
@@ -60,42 +50,6 @@ def _determine_extraction_status(obj: dict | None) -> str:
     if any(_to_float(p.get("prev_value")) != _to_float(p.get("curr_value")) for p in periods):
         return "ok"
     return "no_periods"
-
-
-def _run_stage1_and_stage2(
-    title: str, content: str | None, pdf_path: str | None, code: str, name: str,
-    recorder: ProvenanceRecorder | None = None, source=None,
-) -> dict | None:
-    """Stage1（抽出）を実行し、成功すればStage2（推論）を実行してマージした結果を返す。
-
-    Stage1が失敗した場合はNoneを返す。Stage2が失敗した場合でもStage1のデータは失わない
-    （direct_factors等はNoneのまま保存する。詳細はdocs/forecast_revision_llm_pipeline_redesign.md §5）。
-    recorderがあればStage1/Stage2を別々のrunとして記録する。
-    """
-    stage1_input = {"title": title, "code": code, "name": name}
-    if pdf_path is not None:
-        stage1_obj = run_llm_stage(
-            recorder, source, stage="stage1", prompt_name=stage1_native_module.PROMPT_FILENAME,
-            input_payload=stage1_input,
-            call=lambda: extract_forecast_revision_stage1_native(title=title, pdf_path=pdf_path, code=code, name=name),
-        )
-    else:
-        stage1_obj = run_llm_stage(
-            recorder, source, stage="stage1", prompt_name=stage1_text_module.PROMPT_FILENAME,
-            input_payload={**stage1_input, "text_sha256": text_hash(content or "")},
-            call=lambda: extract_forecast_revision_stage1(title=title, content=content, code=code, name=name),
-        )
-
-    if stage1_obj is None:
-        return None
-
-    stage2_context = build_stage2_context(stage1_obj, title=title, code=code, name=name)
-    stage2_obj = run_llm_stage(
-        recorder, source, stage="stage2", prompt_name=stage2_module.PROMPT_FILENAME,
-        input_payload={"context_sha256": text_hash(stage2_context)},
-        call=lambda: infer_forecast_revision_stage2(stage2_context),
-    )
-    return merge_stage_results(stage1_obj, stage2_obj)
 
 
 def main():
@@ -161,15 +115,7 @@ def main():
                 skipped_duplicates += 1
                 continue
 
-            withdrawn_keyword = next((kw for kw in WITHDRAWN_KEYWORDS if kw in title), None)
-            if withdrawn_keyword is not None:
-                if recorder is not None:
-                    # LLMを呼ばずに終える判断も判断runとして残す（PDF取得前なのでsource_hashはNULL）
-                    recorder.record_decision(
-                        url=url, stage="eligibility", outcome="withdrawn",
-                        outcome_reason=f"title_keyword:{withdrawn_keyword}",
-                        input_payload={"title": title, "rule": "forecast_withdrawn_title", "keywords": WITHDRAWN_KEYWORDS},
-                    )
+            if record_withdrawn_route(recorder, url=url, title=title):
                 saved = post_forecast_revision(
                     session=session, data={}, code=code, url=url,
                     disclosure_date=disclosure_date, extraction_status="withdrawn",
@@ -182,40 +128,13 @@ def main():
                     failed_parse += 1
                 continue
 
-            source = None
-            pdf_path = None
-            content = None
-            if recorder is not None:
-                # 台帳照合済みのPDFだけをnative/textの両経路で使う
-                source = recorder.resolve_source(
-                    url=url, disclosure_date=row["date"], time=row["time"],
-                    pdf_root=PDF_DOWNLOAD_PATH, stage="stage1",
-                )
-                if source is not None:
-                    pdf_path = str(source.path)
-                    if not USE_NATIVE_PDF:
-                        content = extract_pdf_text(pdf_path)
-                        if content is None:
-                            recorder.record_source_failure(
-                                url=url, stage="stage1", error_code="pdf_read_failed", source=source,
-                            )
-                loaded = source is not None and (USE_NATIVE_PDF or content is not None)
-            elif USE_NATIVE_PDF:
-                pdf_path = get_pdf_path(
-                    url=url,
-                    pud_date_str=date_str,
-                    save_dir=PDF_DOWNLOAD_PATH,
-                )
-                loaded = pdf_path is not None
-            else:
-                content = get_pdf_data(
-                    url=url,
-                    pud_date_str=date_str,
-                    save_dir=PDF_DOWNLOAD_PATH,
-                )
-                loaded = content is not None
-
-            if not loaded:
+            # provenance有効時は台帳照合済みのPDFだけをnative/textの両経路で使う
+            pdf_input = prepare_pdf_input(
+                recorder, url=url, disclosure_date=row["date"], time=row["time"],
+                pud_date_str=date_str, pdf_root=PDF_DOWNLOAD_PATH,
+                use_native=USE_NATIVE_PDF, stage="stage1",
+            )
+            if pdf_input is None:
                 logger.error(f"PDFの取得に失敗しました: {url}")
                 saved = post_forecast_revision(
                     session=session, data={}, code=code, url=url,
@@ -228,15 +147,7 @@ def main():
                 failed_pdf += 1
                 continue
 
-            obj = _run_stage1_and_stage2(
-                title=title,
-                content=None if USE_NATIVE_PDF else content,
-                pdf_path=pdf_path if USE_NATIVE_PDF else None,
-                code=code,
-                name=name,
-                recorder=recorder,
-                source=source,
-            )
+            obj = run_stage1_and_stage2(recorder, pdf_input, title=title, code=code, name=name)
 
             if obj is not None and any(kw in title for kw in CORRECTION_KEYWORDS):
                 extraction_status = "correction"

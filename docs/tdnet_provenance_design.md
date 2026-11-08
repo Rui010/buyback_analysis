@@ -21,7 +21,9 @@
 
 ## 処理順序
 
-`resolve_verified_source()` が次を行い、照合済みのパスだけを返す。native/text方式ともこのパスを使う（text方式は `extract_pdf_text()` で同じファイルを読む）。
+各エントリーポイントは `prepare_pdf_input()`（`tdnet_provenance/usecase/`）でPDF入力を用意し、LLM stageは `run_midterm_stages.py`（中計）・`run_forecast_revision_stages.py`（会社予想。タイトルの取り下げ判定を含む）経由で呼ぶ。これらは `sqlite_engine` をimportしないため、`main.py` を対象外とするテスト方針のままで配線をユニットテストできる。
+
+`prepare_pdf_input()` は、recorderがあれば `resolve_verified_source()` で照合済みのパスだけを使い（text方式は `extract_pdf_text()` で同じファイルを読む）、なければ従来どおり `get_pdf_path()` / `get_pdf_data()` を使う。`resolve_verified_source()` は次を行う。
 
 1. 台帳に行がなければ `fetch_pdf()` でPDFを取得（保存済みなら再利用）し、hashを計算して台帳へ登録・commitする
 2. 台帳行の `storage_uri` から実ファイルを解決して再hashし、台帳値と照合する
@@ -53,10 +55,10 @@ PDF取得前のfailed runは `source_hash=NULL`、`input_locator=URL` になる�
 - 成否は、LLM関数が `None` を返したら（分類は `"failed"` を返したら）`failed` / `no_result`、`SystemExit` 等の例外なら `failed` / 例外のクラス名とし、例外はそのまま再送出する
 - run自体を保存できなかった場合は `RunPersistError` でパイプラインを止める。これは、runのない抽出結果を保存しないため
 - 中計の `withdrawn` / `postponed` / `no_targets` はmetrics・classificationのLLMの後に決まるため、判断runにはしない（仕様 §4.5）
+- `extractor_version`: 抽出器の論理版はまだ管理していないため、`code_commit` と同じ値を明示的に保存する（reuse keyの値は仕様の代替規則と同じになる）
 - `code_commit`: `CODE_COMMIT` → `git rev-parse HEAD` の順で取得する。build manifestと `artifact-sha256:` は、本番の反映方法を確認してから実装する
 
 ## Step 1で記録しない項目
 
 - `generation_config`: `{}` で記録する。LLM関数内の設定には `response_schema` などJSON化できない値が含まれ、呼び出し側へ写すとずれるため、Step 3でLLM関数から返す形にする
-- `extractor_version`: NULL。reuse keyは仕様どおり `code_commit` を代わりに使う
 - token・費用・request ID: Step 3で対応する

@@ -7,10 +7,6 @@ from dotenv import load_dotenv
 
 from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
-from buyback_analysis.usecase.get_pdf_data import extract_pdf_text, get_pdf_data
-from buyback_analysis.usecase.get_pdf_path import get_pdf_path
-from buyback_analysis.usecase.parse_text_by_llm import parse_text_by_llm
-from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.interface.logger import Logger
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan  # init_db() に登録するためインポート
 from midterm_plan_analysis.models.midterm_plan_keyword import MidtermPlanKeyword  # noqa: F401 init_db() に登録するためインポート
@@ -19,15 +15,15 @@ from midterm_plan_analysis.usecase.get_tdnet_midterm_data import (
     get_tdnet_midterm_data_by_urls,
 )
 from midterm_plan_analysis.usecase.post_midterm_plan import post_midterm_plan
-from midterm_plan_analysis.usecase import extract_midterm_keywords as keywords_text
-from midterm_plan_analysis.usecase import extract_midterm_keywords_native as keywords_native
-from midterm_plan_analysis.usecase.extract_midterm_keywords import extract_midterm_keywords
-from midterm_plan_analysis.usecase.extract_midterm_keywords_native import extract_midterm_keywords_native
 from midterm_plan_analysis.usecase.post_midterm_keywords import post_midterm_keywords
-from buyback_analysis.usecase import classify_midterm_by_llm as classify_module
-from buyback_analysis.usecase.classify_midterm_by_llm import classify_midterm_by_llm
+from midterm_plan_analysis.usecase.run_midterm_stages import (
+    run_midterm_classification,
+    run_midterm_keywords,
+    run_midterm_metrics,
+)
 from buyback_analysis.interface.notifier import notify_success, notify_error
-from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder, run_llm_stage, text_hash
+from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
+from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
 load_dotenv()
 
@@ -101,40 +97,13 @@ def main():
             title = row["title"]
             name = row["name"]
 
-            source = None
-            pdf_path = None
-            content = None
-            if recorder is not None:
-                # 台帳照合済みのPDFだけをnative/textの両経路で使う
-                source = recorder.resolve_source(
-                    url=url, disclosure_date=row["date"], time=row["time"],
-                    pdf_root=PDF_DOWNLOAD_PATH, stage="metrics",
-                )
-                if source is not None:
-                    pdf_path = str(source.path)
-                    if not USE_NATIVE_PDF:
-                        content = extract_pdf_text(pdf_path)
-                        if content is None:
-                            recorder.record_source_failure(
-                                url=url, stage="metrics", error_code="pdf_read_failed", source=source,
-                            )
-                loaded = source is not None and (USE_NATIVE_PDF or content is not None)
-            elif USE_NATIVE_PDF:
-                pdf_path = get_pdf_path(
-                    url=url,
-                    pud_date_str=row["date"].strftime("%Y%m%d"),
-                    save_dir=PDF_DOWNLOAD_PATH,
-                )
-                loaded = pdf_path is not None
-            else:
-                content = get_pdf_data(
-                    url=url,
-                    pud_date_str=row["date"].strftime("%Y%m%d"),
-                    save_dir=PDF_DOWNLOAD_PATH,
-                )
-                loaded = content is not None
-
-            if not loaded:
+            # provenance有効時は台帳照合済みのPDFだけをnative/textの両経路で使う
+            pdf_input = prepare_pdf_input(
+                recorder, url=url, disclosure_date=row["date"], time=row["time"],
+                pud_date_str=row["date"].strftime("%Y%m%d"), pdf_root=PDF_DOWNLOAD_PATH,
+                use_native=USE_NATIVE_PDF, stage="metrics",
+            )
+            if pdf_input is None:
                 logger.error(f"PDFの取得に失敗しました: {url}")
                 post_midterm_plan(
                     session=session, data={}, code=code, url=url,
@@ -143,34 +112,7 @@ def main():
                 failed_pdf += 1
                 continue
 
-            llm_input = {"title": title, "code": code, "name": name}
-            if not USE_NATIVE_PDF:
-                llm_input["text_sha256"] = text_hash(content)
-
-            if USE_NATIVE_PDF:
-                obj = run_llm_stage(
-                    recorder, source, stage="metrics", prompt_name="midterm_plan_native.md",
-                    input_payload=llm_input,
-                    call=lambda: parse_pdf_by_llm(
-                        title=title,
-                        pdf_path=pdf_path,
-                        code=code,
-                        name=name,
-                        prompt_filename="midterm_plan_native.md",
-                    ),
-                )
-            else:
-                obj = run_llm_stage(
-                    recorder, source, stage="metrics", prompt_name="midterm_plan.md",
-                    input_payload=llm_input,
-                    call=lambda: parse_text_by_llm(
-                        title=title,
-                        content=content,
-                        code=code,
-                        name=name,
-                        prompt_filename="midterm_plan.md",
-                    ),
-                )
+            obj = run_midterm_metrics(recorder, pdf_input, title=title, code=code, name=name)
 
             if obj is None:
                 logger.error(f"LLMによるパースに失敗しました: {url}")
@@ -182,22 +124,7 @@ def main():
                 continue
 
             if EXTRACT_KEYWORDS:
-                if USE_NATIVE_PDF:
-                    keywords_obj = run_llm_stage(
-                        recorder, source, stage="keywords", prompt_name=keywords_native.PROMPT_FILENAME,
-                        input_payload=llm_input,
-                        call=lambda: extract_midterm_keywords_native(
-                            title=title, pdf_path=pdf_path, code=code, name=name
-                        ),
-                    )
-                else:
-                    keywords_obj = run_llm_stage(
-                        recorder, source, stage="keywords", prompt_name=keywords_text.PROMPT_FILENAME,
-                        input_payload=llm_input,
-                        call=lambda: extract_midterm_keywords(
-                            title=title, content=content, code=code, name=name
-                        ),
-                    )
+                keywords_obj = run_midterm_keywords(recorder, pdf_input, title=title, code=code, name=name)
                 if keywords_obj is None:
                     logger.error(f"[Keywords] キーワード抽出に失敗しました: {url}")
                 post_midterm_keywords(
@@ -222,14 +149,8 @@ def main():
             elif any(kw in title for kw in POSTPONED_KEYWORDS):
                 extraction_status = "postponed"
             else:
-                classify_content = content or ""
-                extraction_status = run_llm_stage(
-                    recorder, source, stage="classification", prompt_name=classify_module.PROMPT_FILENAME,
-                    input_payload={"title": title, "code": code, "name": name, "text_sha256": text_hash(classify_content)},
-                    call=lambda: classify_midterm_by_llm(
-                        title=title, content=classify_content, code=code, name=name
-                    ),
-                    is_success=lambda status: status != "failed",
+                extraction_status = run_midterm_classification(
+                    recorder, pdf_input, title=title, code=code, name=name
                 )
 
             saved = post_midterm_plan(

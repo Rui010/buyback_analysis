@@ -153,6 +153,7 @@ class ProvenanceRecorder:
             run_kind="extract",
             stage=stage,
             code_commit=self.code_commit,
+            extractor_version=self.code_commit,  # 抽出器の論理版は未管理のため、コード版をそのまま版とする
         )
 
     def record_source_failure(self, *, url, stage, error_code, source: VerifiedSource | None = None):
@@ -198,6 +199,7 @@ class ProvenanceRecorder:
             run_kind="extract",
             stage=stage,
             code_commit=self.code_commit,
+            extractor_version=self.code_commit,  # 抽出器の論理版は未管理のため、コード版をそのまま版とする
             prompt_name=prompt_name,
             prompt_hash=prompt_file_hash(prompt_name),
             model_provider=MODEL_PROVIDER,
@@ -229,6 +231,7 @@ class ProvenanceRecorder:
             run_kind="route",
             stage=stage,
             code_commit=self.code_commit,
+            extractor_version=self.code_commit,  # 抽出器の論理版は未管理のため、コード版をそのまま版とする
         )
         started_at = self._now()
         return self._append(spec, status="succeeded", started_at=started_at,

@@ -154,11 +154,12 @@ tdnet_provenance/
     ├── source_identity.py         # 文書ID・公表日フォルダ・storage_uri・SHA-256の識別規則
     ├── resolve_verified_source.py # 台帳の初回登録とrun開始前の再hash照合
     ├── provenance_recorder.py     # runの記録（ProvenanceRecorder / run_llm_stage）
+    ├── prepare_pdf_input.py       # LLMへ渡すPDF入力の準備（照合済みパス／従来経路）
     ├── code_version.py            # code_commitの解決
     └── migrate_provenance_tables.py
 ```
 
-`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1にあたる。設計は`docs/tdnet_provenance_design.md`を参照。
+`TDNET_PROVENANCE_ENABLED=true`のときだけ使う。中計・会社予想のLLM stage呼び出しは`midterm_plan_analysis/usecase/run_midterm_stages.py`・`forecast_revision_analysis/usecase/run_forecast_revision_stages.py`にまとめており（`main.py`はこれらを呼ぶだけ）、配線をユニットテストできる。ir-analytics-platformの引継ぎ仕様（`docs/upstream/tdnet-provenance/`）のStep 1にあたる。設計は`docs/tdnet_provenance_design.md`を参照。
 
 ## データフロー
 

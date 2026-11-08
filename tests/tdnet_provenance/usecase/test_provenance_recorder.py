@@ -73,6 +73,7 @@ def test_successful_llm_run_records_source_and_conditions(session):
     assert run.source_hash == "a" * 64
     assert run.input_locator == SOURCE.storage_uri
     assert run.code_commit == COMMIT
+    assert run.extractor_version == COMMIT
     assert run.prompt_name == "midterm_plan.md"
     assert run.prompt_hash == prompt_file_hash("midterm_plan.md")
     assert run.model_provider == "google"

@@ -3,9 +3,11 @@
 buyback_appの同期allowlist化（ir-analytics-platform
 docs/plans/handoffs/buyback-app-data-transport-history-exclusion.md）の受入完了前に
 本番SQLiteへ実行しないこと。新テーブルがPostgreSQLへ自動コピーされる。
+
+復元: パイプライン停止中に
+    python scripts/migrate_tdnet_provenance_tables.py --restore <バックアップファイル>
 """
 
-import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -15,37 +17,59 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from buyback_analysis.interface.sqlite_engine import engine
 from tdnet_provenance.usecase.migrate_provenance_tables import (
+    backup_sqlite_database,
     migrate_provenance_tables,
-    table_row_counts,
+    restore_sqlite_backup,
+    table_fingerprints,
+    verify_provenance_schema,
 )
 
 
-def _backup_sqlite_database() -> Path:
+def _database_path() -> Path:
     database = engine.url.database
     if not database or database == ":memory:":
         raise ValueError("ファイルSQLiteだけが移行対象です")
+    path = Path(database).resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"SQLiteファイルが見つかりません: {path}")
+    return path
 
-    source_path = Path(database).resolve()
-    if not source_path.is_file():
-        raise FileNotFoundError(f"SQLiteファイルが見つかりません: {source_path}")
 
+def migrate() -> None:
+    database_path = _database_path()
+    before = table_fingerprints(engine)
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    backup_path = source_path.with_name(f"{source_path.name}.bak-provenance-{timestamp}")
-    with sqlite3.connect(source_path) as source, sqlite3.connect(backup_path) as backup:
-        source.backup(backup)
-    return backup_path
+    backup_path = backup_sqlite_database(
+        database_path, database_path.with_name(f"{database_path.name}.bak-provenance-{timestamp}")
+    )
+    print(f"バックアップ: {backup_path}")
+
+    created = migrate_provenance_tables(engine)
+    print(f"作成したテーブル: {', '.join(created) if created else 'なし（作成済み）'}")
+
+    verify_provenance_schema(engine)
+    print("schema検証: OK")
+
+    after = table_fingerprints(engine)
+    changed = sorted(name for name, value in before.items() if after.get(name) != value)
+    if changed:
+        raise SystemExit(f"既存テーブルの内容が変わりました: {changed}。バックアップから復元してください: {backup_path}")
+    for name in sorted(after):
+        print(f"  {name}: {before[name][0] if name in before else '-'} -> {after[name][0]}行")
+    print("既存テーブルの内容検証（全行hash）: OK")
+
+
+def restore(backup_path: str) -> None:
+    database_path = _database_path()
+    engine.dispose()
+    restore_sqlite_backup(backup_path, database_path)
+    print(f"復元しました: {backup_path} -> {database_path}")
 
 
 if __name__ == "__main__":
-    before = table_row_counts(engine)
-    backup_path = _backup_sqlite_database()
-    created = migrate_provenance_tables(engine)
-    after = table_row_counts(engine)
-
-    print(f"バックアップ: {backup_path}")
-    print(f"作成したテーブル: {', '.join(created) if created else 'なし（作成済み）'}")
-    changed = {name: (count, after.get(name)) for name, count in before.items() if after.get(name) != count}
-    if changed:
-        raise SystemExit(f"既存テーブルの行数が変わりました: {changed}")
-    for name in sorted(after):
-        print(f"  {name}: {before.get(name, '-')} -> {after[name]}")
+    if len(sys.argv) == 3 and sys.argv[1] == "--restore":
+        restore(sys.argv[2])
+    elif len(sys.argv) == 1:
+        migrate()
+    else:
+        raise SystemExit("usage: migrate_tdnet_provenance_tables.py [--restore <backup>]")

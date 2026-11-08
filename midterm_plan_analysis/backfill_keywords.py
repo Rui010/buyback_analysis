@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 
 from buyback_analysis.interface.postgresql_engine import get_database_engine
 from buyback_analysis.interface.sqlite_engine import SessionLocal, init_db
-from buyback_analysis.usecase.get_pdf_data import extract_pdf_text, get_pdf_data
-from buyback_analysis.usecase.get_pdf_path import get_pdf_path
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.interface.notifier import notify_success, notify_error
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan  # noqa: F401 init_db() に登録するためインポート
@@ -16,12 +14,10 @@ from midterm_plan_analysis.usecase.get_midterm_plans_missing_keywords import (
     get_midterm_plans_missing_keywords,
 )
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data_by_urls
-from midterm_plan_analysis.usecase.extract_midterm_keywords import extract_midterm_keywords
-from midterm_plan_analysis.usecase.extract_midterm_keywords_native import extract_midterm_keywords_native
 from midterm_plan_analysis.usecase.post_midterm_keywords import post_midterm_keywords
-from midterm_plan_analysis.usecase import extract_midterm_keywords as keywords_text
-from midterm_plan_analysis.usecase import extract_midterm_keywords_native as keywords_native
-from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder, run_llm_stage, text_hash
+from midterm_plan_analysis.usecase.run_midterm_stages import run_midterm_keywords
+from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
+from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
 load_dotenv()
 
@@ -75,53 +71,18 @@ def main():
             title, name = tdnet_row["title"], tdnet_row["name"]
             pud_date_str = (plan.disclosure_date or "").replace("-", "")
 
-            source = None
-            pdf_path = None
-            content = None
-            if recorder is not None:
-                # 台帳照合済みのPDFだけをnative/textの両経路で使う
-                source = recorder.resolve_source(
-                    url=plan.url, disclosure_date=tdnet_row["date"], time=tdnet_row["time"],
-                    pdf_root=PDF_DOWNLOAD_PATH, stage="keywords",
-                )
-                if source is not None:
-                    pdf_path = str(source.path)
-                    if not USE_NATIVE_PDF:
-                        content = extract_pdf_text(pdf_path)
-                        if content is None:
-                            recorder.record_source_failure(
-                                url=plan.url, stage="keywords", error_code="pdf_read_failed", source=source,
-                            )
-                loaded = source is not None and (USE_NATIVE_PDF or content is not None)
-            elif USE_NATIVE_PDF:
-                pdf_path = get_pdf_path(url=plan.url, pud_date_str=pud_date_str, save_dir=PDF_DOWNLOAD_PATH)
-                loaded = pdf_path is not None
-            else:
-                content = get_pdf_data(url=plan.url, pud_date_str=pud_date_str, save_dir=PDF_DOWNLOAD_PATH)
-                loaded = content is not None
-
-            if not loaded:
+            # provenance有効時は台帳照合済みのPDFだけを使う（台帳の公表日はTDnet行の値）
+            pdf_input = prepare_pdf_input(
+                recorder, url=plan.url, disclosure_date=tdnet_row["date"], time=tdnet_row["time"],
+                pud_date_str=pud_date_str, pdf_root=PDF_DOWNLOAD_PATH,
+                use_native=USE_NATIVE_PDF, stage="keywords",
+            )
+            if pdf_input is None:
                 logger.error(f"[Backfill] PDFの取得に失敗しました: {plan.url}")
                 failed_pdf += 1
                 continue
 
-            llm_input = {"title": title, "code": plan.code, "name": name}
-            if USE_NATIVE_PDF:
-                keywords_obj = run_llm_stage(
-                    recorder, source, stage="keywords", prompt_name=keywords_native.PROMPT_FILENAME,
-                    input_payload=llm_input,
-                    call=lambda: extract_midterm_keywords_native(
-                        title=title, pdf_path=pdf_path, code=plan.code, name=name
-                    ),
-                )
-            else:
-                keywords_obj = run_llm_stage(
-                    recorder, source, stage="keywords", prompt_name=keywords_text.PROMPT_FILENAME,
-                    input_payload={**llm_input, "text_sha256": text_hash(content)},
-                    call=lambda: extract_midterm_keywords(
-                        title=title, content=content, code=plan.code, name=name
-                    ),
-                )
+            keywords_obj = run_midterm_keywords(recorder, pdf_input, title=title, code=plan.code, name=name)
 
             if keywords_obj is None:
                 logger.error(f"[Backfill] キーワード抽出に失敗しました: {plan.url}")
