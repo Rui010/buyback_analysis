@@ -43,6 +43,7 @@ class TestMidtermPlan:
         assert plan.plan_start_fiscal_end is None
         assert plan.plan_end_fiscal_end is None
         assert plan.metrics is None
+        assert plan.reference_values is None
 
     def test_plan_period_columns_are_nullable_strings(self):
         columns = MidtermPlan.__table__.columns
@@ -55,3 +56,8 @@ class TestMidtermPlan:
         ):
             assert columns[name].type.python_type is str
             assert columns[name].nullable is True
+
+    def test_reference_values_column_is_nullable_text(self):
+        column = MidtermPlan.__table__.columns["reference_values"]
+        assert column.type.python_type is str
+        assert column.nullable is True

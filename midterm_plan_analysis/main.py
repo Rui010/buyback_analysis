@@ -14,6 +14,7 @@ from midterm_plan_analysis.usecase.get_tdnet_midterm_data import (
     get_tdnet_midterm_data,
     get_tdnet_midterm_data_by_urls,
 )
+from midterm_plan_analysis.usecase.determine_midterm_status import determine_midterm_status
 from midterm_plan_analysis.usecase.save_midterm_result import (
     KEYWORDS_NOT_REQUESTED,
     MIDTERM_TABLES,
@@ -106,6 +107,7 @@ def main():
                 recorder, url=url, disclosure_date=row["date"], time=row["time"],
                 pud_date_str=row["date"].strftime("%Y%m%d"), pdf_root=PDF_DOWNLOAD_PATH,
                 use_native=USE_NATIVE_PDF, stage="metrics",
+                page_markers=True,  # text方式ではmetricsにページの目印入りの本文を送る（keywords等は従来の本文）
             )
             if pdf_input is None:
                 logger.error(f"PDFの取得に失敗しました: {url}")
@@ -134,23 +136,13 @@ def main():
                     logger.error(f"[Keywords] キーワード抽出に失敗しました: {url}")
                 keywords = (keywords_obj or {}).get("data", {}).get("keywords")
 
-            metrics = obj.get("data", {}).get("metrics")
-            has_metrics = bool(metrics) and any(
-                m.get("value") is not None for m in metrics
-            )
-
-            WITHDRAWN_KEYWORDS = ["取り下げ", "廃止", "撤回"]
-            POSTPONED_KEYWORDS = ["延期", "見送り"]
-            if any(kw in title for kw in WITHDRAWN_KEYWORDS):
-                extraction_status = "withdrawn"
-            elif has_metrics:
-                extraction_status = "ok"
-            elif any(kw in title for kw in POSTPONED_KEYWORDS):
-                extraction_status = "postponed"
-            else:
-                extraction_status = run_midterm_classification(
+            extraction_status = determine_midterm_status(
+                title,
+                obj.get("data", {}).get("metrics"),
+                classify=lambda: run_midterm_classification(
                     recorder, pdf_input, title=title, code=code, name=name
-                )
+                ),
+            )
 
             # キーワード→計画の順に保存する（provenance有効時は1つの版として採用）
             saved = save_midterm_result(

@@ -26,7 +26,8 @@ midterm_plans
 ├── plan_start_fiscal_end   # 計画開始期間の決算期末（YYYY/MM）
 ├── plan_end_fiscal_end     # 計画終了期間の決算期末（YYYY/MM）
 ├── disclosure_date  # 開示日
-└── metrics          # 経営指標（JSON文字列）
+├── metrics          # 目標（JSON文字列・配列）
+└── reference_values # 目標表に並ぶ実績・見込・予想（JSON文字列・配列。2026-11の改訂前の抽出はnull）
 ```
 
 ### metricsのJSON構造（例）
@@ -69,17 +70,54 @@ midterm_plans
 }
 ```
 
-### 抽出対象の境界
+### 抽出対象の境界（2026-11改訂）
 
-`metrics` は、中期経営計画の最終年度または計画期間内の中間年度について、会社自身が目標として明示した数値に限定する。次の数値は抽出しない。
+ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\plans\handoffs\buyback-midterm-target-extraction.md`）に合わせ、目標は抽出段階では捨てずにすべて取り、属性を付けて後段で選べるようにした。
 
-- 中計目標として明示されていない単年度の業績予想・業績予想修正
-- 訂正資料に併記された訂正前の値、実績値、または目標値以外の訂正内容
-- 役員報酬・業績連動報酬の評価指標、質疑応答での発言、数値目標を含まない計画骨子
-- 人口・市場規模・需要予測などの外部統計、参考資料の数値
-- 計画期間外の長期目標、または対象年度が不明な長期ビジョンの数値
+- `metrics` は会社自身が目標として示した定量値を、計画期間の内外を問わずすべて持つ。長期目標・長期ビジョンの数値も `target_scope=long_term` として残す
+- 見直し・訂正資料に併記された見直し前の目標も `revision_role=previous` として残す（前の文書がDBにない場合に備えるため）
+- 業績予想・実績・見込は `metrics` に入れない。目標と並べて記載されたものだけ `reference_values` に入れる
+- 役員報酬KPI・質疑応答・計画骨子だけの資料は `"metrics": []`、外部統計・市場予測はどちらにも入れない（従来どおり）
 
-訂正資料で目標値そのものの訂正後の値が明示されている場合だけ、訂正後の値を抽出する。抽出対象がなければ `metrics` は空配列とし、既存パイプラインの分類処理によって `no_targets` 等を決定する。テキスト方式とネイティブPDF方式で同じ境界を適用する。
+`metrics` の各要素に加えた項目:
+
+| 項目 | 値 |
+|---|---|
+| `target_scope` | `plan_final` / `plan_interim` / `long_term` / `cumulative` / `unknown` |
+| `revision_role` | `current` / `previous` |
+| `consolidation_label` | `consolidated` / `non_consolidated` / `null`（表題・見出し・指標名に書かれた場合だけ） |
+| `bound` | `exact` / `lower` / `upper` / `approx` / `range`（`range`のとき`value`は下限） |
+| `value_upper` | `bound=range`の上限、それ以外は`null` |
+| `value_text` | 資料の数値の表記そのまま |
+| `page` | PDFのページ番号（1始まり） |
+
+`reference_values` の各要素は `name`・`value`・`unit`・`segment`・`consolidation_label`・`page`・`value_text`・`kind`（`actual` / `estimate` / `forecast` / `unknown`）・`period_label`・`period_fiscal_end` を持つ。
+
+#### 正規化（`normalize_midterm_metrics.py`）
+
+中計は汎用の`parse_text_by_llm`/`parse_pdf_by_llm`を使いresponseSchemaがないため、`run_midterm_metrics()`がLLMの出力を保存前に正規化する。新しい項目が欠けても失敗扱いにせず補う。
+
+- `value` は数値か`null`。文字列は数値に直せるとき（全角数字・桁区切り・`△`/`▲`の負号、「7.0以上」「約100」「5〜7」）だけ直し、元の表記を`value_text`に残す。`bound`が欠けていれば表記から導く
+- 許可値以外の`target_scope`は`unknown`、`revision_role`は`current`、`consolidation_label`・`bound`は`null`、`kind`は`unknown`
+- 計画の終了期間（`plan_end_year`・`plan_end_period_label`・`plan_end_fiscal_end`）がすべて`null`の文書では、`plan_final`・`plan_interim`・`long_term`を`unknown`にする（`cumulative`は残す）
+- `page`はLLMがページの境目を見られない入力（ページの目印がないtext方式）では`null`
+- 空の`segment`は項目ごと削除する
+- 同じ値が`metrics`と`reference_values`の両方にあれば`[WARNING]`ログを出す（保存はする）
+
+正規化後の結果をrunの出力として記録するため、metrics stageの`extractor_version`は`<LLM関数のEXTRACTOR_VERSION>+<NORMALIZER_VERSION>`とする。正規化の規則を変えたら`NORMALIZER_VERSION`を上げる。
+
+#### ページ番号の取得
+
+- native方式: LLMにPDFのページ番号（1始まり）を返させる
+- text方式: `main.py`は`prepare_pdf_input(..., page_markers=True)`で、各ページの本文の前に`--- page N ---`を入れた本文（`PdfInput.paged_content`）も用意し、metricsにだけ送る。keywords・classificationは従来どおり目印のない本文を使う（入力を変えて再利用判定に影響させないため）
+
+#### 旧仕様の行
+
+`target_scope`を持たない`metrics`の行（2026-11改訂前の抽出）は旧仕様。長期目標が除外され、業績予想・実績・見直し前の値が混入している可能性がある。旧仕様の行は再抽出しない限り更新されない（1,588文書の一括再抽出は費用見積もりのうえ別途判断）。
+
+#### 正解データとの突き合わせ
+
+`scripts/verify_midterm_targets.py`は、本番DBにもprocessing_runにも書かず、`main.py`と同じ経路で抽出してir-analytics-platformの正解データ（`fixtures/phase-2.5/midterm-source-review.json`）と突き合わせる（判定は`compare_midterm_fixture.py`）。`--compare-only`ならLLMを呼ばず保存済み結果を再判定する。TDnetのPDFは時間が経つと取得できなくなるため、PDFは事前に`PDF_DOWNLOAD_PATH`配下（`<公表日>/<ファイル名>`）へ置いておく。
 
 ### 既存SQLiteの移行
 
@@ -90,6 +128,14 @@ midterm_plans
 ```
 
 スクリプトは移行前にSQLiteオンラインバックアップ（`<DB名>.bak-plan-period-<日時>`）を同じディレクトリへ作成し、不足している4列だけを追加する。既存行は保持し、再実行時は追加済みの列をスキップする。過去データの再抽出・バックフィルは行わない。
+
+`reference_values`列（2026-11）も同じ手順で追加する。**列を追加したコードを動かす前に実行すること**（モデルに列があるため、未追加のDBでは`midterm_plans`の読み書きが失敗する）。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\migrate_midterm_reference_values.py
+```
+
+バックアップは`<DB名>.bak-reference-values-<日時>`。PostgreSQLへの同期（buyback_app）は列の構成が違うテーブルをスキップするため、順序は (1) SQLiteに列を追加、(2) PostgreSQLの`buyback_midterm_plans`に`reference_values TEXT`を追加（buyback_app側の作業）、(3) 同期の再開。(1)と(2)が別の日になると、その間`midterm_plans`の同期が止まる。
 
 ---
 

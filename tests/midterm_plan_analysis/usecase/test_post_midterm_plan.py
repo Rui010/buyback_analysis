@@ -222,3 +222,31 @@ class TestPostMidtermPlan:
         assert result is False
         assert not session.add.called
         assert not session.commit.called
+
+
+class TestPostMidtermPlanReferenceValues:
+
+    def _save(self, inner):
+        session = MagicMock()
+        post_midterm_plan(
+            session=session, data={"type": "MIDTERM_PLAN", "data": inner}, code="1234",
+            url="https://example.com/plan.pdf", disclosure_date="2025-04-18", extraction_status="ok",
+        )
+        return session.add.call_args[0][0]
+
+    def test_reference_values_serialized_as_json(self):
+        refs = [{"name": "売上高", "value": 450, "unit": "億円", "kind": "actual", "period_label": "2024年度"}]
+        instance = self._save({"metrics": [], "reference_values": refs})
+        assert json.loads(instance.reference_values) == refs
+
+    def test_empty_reference_values_saved_as_empty_array(self):
+        assert self._save({"metrics": [], "reference_values": []}).reference_values == "[]"
+
+    def test_missing_reference_values_saved_as_null(self):
+        assert self._save({"metrics": []}).reference_values is None
+
+    def test_new_metric_fields_are_kept(self):
+        metric = {"name": "売上高", "value": 1000, "unit": "億円", "target_scope": "long_term",
+                  "revision_role": "previous", "consolidation_label": "consolidated", "bound": "lower",
+                  "value_upper": None, "value_text": "1,000億円以上", "page": 3}
+        assert json.loads(self._save({"metrics": [metric]}).metrics) == [metric]

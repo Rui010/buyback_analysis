@@ -75,3 +75,48 @@ def test_disabled_text_uses_legacy_data():
 def test_disabled_fetch_failure_returns_none(use_native, target):
     with patch(f"{MODULE}.{target}", return_value=None):
         assert _prepare(None, use_native=use_native) is None
+
+
+def test_text_with_page_markers_reads_pages_once(make_recorder, verified_pdf):
+    with patch(f"{MODULE}.extract_pdf_pages", return_value=["a", "b"]) as pages, patch(
+        f"{MODULE}.extract_pdf_text"
+    ) as plain:
+        result = _prepare(make_recorder(verified_pdf), use_native=False, page_markers=True)
+
+    pages.assert_called_once_with(str(verified_pdf.path))
+    plain.assert_not_called()
+    # contentは従来どおり区切りなし（keywords・classification用）、paged_contentだけに目印を入れる
+    assert result == PdfInput(
+        source=verified_pdf, pdf_path=None, content="ab",
+        paged_content="--- page 1 ---\na\n--- page 2 ---\nb",
+    )
+
+
+def test_text_with_page_markers_read_failure_records_failed_run(make_recorder, verified_pdf, runs):
+    with patch(f"{MODULE}.extract_pdf_pages", return_value=None):
+        assert _prepare(make_recorder(verified_pdf), use_native=False, page_markers=True) is None
+    assert runs() == [("metrics", "extract", "failed", "pdf_read_failed", None)]
+
+
+def test_native_ignores_page_markers(make_recorder, verified_pdf):
+    with patch(f"{MODULE}.extract_pdf_pages") as pages:
+        result = _prepare(make_recorder(verified_pdf), use_native=True, page_markers=True)
+    pages.assert_not_called()
+    assert result.paged_content is None
+
+
+def test_disabled_text_with_page_markers_reads_fetched_pdf():
+    with patch(f"{MODULE}.get_pdf_path", return_value="/pdf/20260219/a.pdf") as legacy, patch(
+        f"{MODULE}.extract_pdf_pages", return_value=["a"]
+    ) as pages:
+        result = _prepare(None, use_native=False, page_markers=True)
+
+    legacy.assert_called_once_with(url=URL, pud_date_str="20260219", save_dir="/pdf")
+    pages.assert_called_once_with("/pdf/20260219/a.pdf")
+    assert result == PdfInput(source=None, pdf_path=None, content="a", paged_content="--- page 1 ---\na")
+
+
+@pytest.mark.parametrize("path,pages", [(None, ["a"]), ("/pdf/a.pdf", None)])
+def test_disabled_text_with_page_markers_failure_returns_none(path, pages):
+    with patch(f"{MODULE}.get_pdf_path", return_value=path), patch(f"{MODULE}.extract_pdf_pages", return_value=pages):
+        assert _prepare(None, use_native=False, page_markers=True) is None

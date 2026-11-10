@@ -51,6 +51,10 @@ def post_midterm_plan(
 
     metrics = inner.get("metrics")
     metrics_json = json.dumps(metrics, ensure_ascii=False) if metrics is not None else None
+    reference_values = inner.get("reference_values")
+    reference_values_json = (
+        json.dumps(reference_values, ensure_ascii=False) if reference_values is not None else None
+    )
 
     instance = MidtermPlan(
         code=code,
@@ -64,6 +68,7 @@ def post_midterm_plan(
         plan_end_fiscal_end=inner.get("plan_end_fiscal_end"),
         disclosure_date=disclosure_date,
         metrics=metrics_json,
+        reference_values=reference_values_json,
         extraction_status=status,
     )
 

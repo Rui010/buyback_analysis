@@ -14,7 +14,8 @@ from midterm_plan_analysis.usecase.migrate_plan_period_fields import (
 )
 
 
-def _backup_sqlite_database() -> Path:
+def _backup_sqlite_database(label: str = "plan-period") -> Path:
+    """SQLiteのオンラインバックアップを同じフォルダに作り、そのパスを返す。"""
     database = engine.url.database
     if not database or database == ":memory:":
         raise ValueError("ファイルSQLiteだけが移行対象です")
@@ -24,7 +25,7 @@ def _backup_sqlite_database() -> Path:
         raise FileNotFoundError(f"SQLiteファイルが見つかりません: {source_path}")
 
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    backup_path = source_path.with_name(f"{source_path.name}.bak-plan-period-{timestamp}")
+    backup_path = source_path.with_name(f"{source_path.name}.bak-{label}-{timestamp}")
     with sqlite3.connect(source_path) as source, sqlite3.connect(backup_path) as backup:
         source.backup(backup)
     return backup_path
