@@ -62,10 +62,14 @@ C2の「決算月から期末に直す」は、前回の仕様の「決算月だ
 
 ### 2.2 改訂後のプロンプトhash
 
-| ファイル | SHA-256 |
-|---|---|
-| `buyback_analysis/prompts/midterm_plan_native.md`（本番・作業Dで使用） | `bedccbac0596305210b0fdab5e37f2c8f456d99cfeeccd57e6bf857c30b550ac` |
-| `buyback_analysis/prompts/midterm_plan.md`（text方式） | `689a361f5fde0896c9f94847a08b801dc46ca716aef4535532b205ddfb864c36` |
+| ファイル | 本番のrunに記録される値（サーバー、改行CRLF） | 作業Dの検証で記録した値（開発PC、改行LF） |
+|---|---|---|
+| `buyback_analysis/prompts/midterm_plan_native.md`（本番で使用） | `73a2006da08dfa668d11ac2fe9bf6f784851814e7f1ff76fc8d7e024b3c6f887` | `bedccbac0596305210b0fdab5e37f2c8f456d99cfeeccd57e6bf857c30b550ac` |
+| `buyback_analysis/prompts/midterm_plan.md`（text方式） | `7af562b2e63f8364fb8110fe4ab45d6851c8655fca436b05ef16c50ca90d0337` | `689a361f5fde0896c9f94847a08b801dc46ca716aef4535532b205ddfb864c36` |
+
+2つの値の中身は同じで、改行コードだけが違う。サーバーのチェックアウトは改行がCRLFになり、`prompt_file_hash()`はファイルのバイト列をそのままハッシュにするため、値が変わる。改行をLFにそろえると、サーバーのファイルはcommit `4c3abd7`と一致する（2026-11-11に確認）。
+
+前回の報告書（`buyback-midterm-target-extraction`）のhash`633d49dd…`もLFで計算した値で、本番のrunに記録されていた`202f51eb…`（例: 6183のrun `bf6d2581…`）と中身は同じだった。依頼元がrunのhashで照合するときは、本番の値（左の列）を使ってほしい。
 
 ### 2.3 正規化での重複除去（C2の補強）
 
@@ -181,6 +185,7 @@ C2の「決算月から期末に直す」は、前回の仕様の「決算月だ
 
 ## 7. commit・本番反映
 
-- commit: 未（本報告の確認後に行う）
-- 本番反映: 未。作業Aのデータ修正だけは本番に反映済み
-- 依頼書第6節の手順3（依頼元が受入を判断）を待って、手順4（本番反映）に進む
+- commit: `4c3abd7633bb489fcd1603bca9ad3528c6c7a193`（GitHubの`main`にpush済み）
+- 本番反映: 2026-11-11に反映した（サーバーで`git pull`。サーバーの`HEAD`が`4c3abd7`であること、改行をそろえるとファイルの中身が一致することを確認した）。作業Aのデータの修正は、それより前に反映済み
+- 依頼書第6節の手順3（依頼元の受入判断）より先に反映した。実装先は、目標の受入条件を満たしていて、足りないのは実績（8185の2件）だけなので、反映しても問題ないと判断した。反映しても、過去の文書は`RERUN_URLS`を指定するまで再抽出されない
+- 次の手順: 依頼元から再抽出のURL一覧（1バッチ目の9文書と6183を含む）を受け取り、本番の再抽出を再開する
