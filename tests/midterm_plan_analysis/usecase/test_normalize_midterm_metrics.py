@@ -262,3 +262,55 @@ class TestDuplicateWarning:
         with patch(f"{MODULE}.logger") as logger:
             normalize_midterm_result(result, page_available=True)
         logger.info.assert_not_called()
+
+
+class TestDuplicateMetrics:
+    """同じ目標（指標名・値・単位・segment・連結区分・見直し前後・期末が同じ）を別ページで2回返したら1行にする。"""
+
+    def test_same_target_on_two_pages_is_merged_keeping_first(self):
+        # 5367: p.1「2031年3月期（計画）」とp.10「2030年度」が同じ期末2031/03の同じ目標
+        first = _metric(value=13000, unit="百万円", target_year=2031, target_period_label="2031年3月期（計画）",
+                        target_fiscal_end="2031/03", page=1)
+        second = _metric(value=13000, unit="百万円", target_year=2030, target_period_label="2030年度",
+                         target_fiscal_end="2031/03", page=10)
+        result = normalize_midterm_result(_result(metrics=[first, second]), page_available=True)
+        metrics = result["data"]["metrics"]
+        assert len(metrics) == 1
+        assert metrics[0]["target_period_label"] == "2031年3月期（計画）"
+        assert metrics[0]["page"] == 1
+
+    @pytest.mark.parametrize("overrides", [
+        {"target_fiscal_end": "2030/03"},          # 期末が違う
+        {"value": 501},                             # 値が違う
+        {"name": "連結売上高"},                     # 指標名が違う
+        {"segment": "A事業"},                       # セグメントが違う
+        {"consolidation_label": "non_consolidated"},  # 連結・単体が違う
+        {"revision_role": "previous"},              # 見直し前の値
+        {"bound": "lower"},                         # 「以上」付き
+    ])
+    def test_different_targets_are_kept(self, overrides):
+        result = normalize_midterm_result(_result(metrics=[_metric(), _metric(**overrides)]), page_available=True)
+        assert len(result["data"]["metrics"]) == 2
+
+    def test_null_fiscal_end_is_not_merged(self):
+        # 期末が分からない行は同じ期か判断できないので残す
+        metrics = [_metric(target_fiscal_end=None), _metric(target_fiscal_end=None, target_year=2030)]
+        result = normalize_midterm_result(_result(metrics=metrics), page_available=True)
+        assert len(result["data"]["metrics"]) == 2
+
+    def test_null_value_is_not_merged(self):
+        metrics = [_metric(value=None, value_text="-"), _metric(value=None, value_text="-")]
+        result = normalize_midterm_result(_result(metrics=metrics), page_available=True)
+        assert len(result["data"]["metrics"]) == 2
+
+    def test_merge_is_logged(self):
+        with patch(f"{MODULE}.logger") as logger:
+            normalize_midterm_result(_result(metrics=[_metric(), _metric(page=5)]), page_available=True,
+                                     log_context="5367 - title")
+        message = logger.info.call_args[0][0]
+        assert "重複" in message and "5367 - title" in message
+
+
+def test_normalizer_version_is_bumped_for_duplicate_merge():
+    from midterm_plan_analysis.usecase.normalize_midterm_metrics import NORMALIZER_VERSION
+    assert NORMALIZER_VERSION == "midterm_metrics_normalizer:2"

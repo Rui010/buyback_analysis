@@ -103,6 +103,7 @@ ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\pl
 - `page`はLLMがページの境目を見られない入力（ページの目印がないtext方式）では`null`
 - 空の`segment`は項目ごと削除する
 - 同じ値が`metrics`と`reference_values`の両方にあれば`[WARNING]`ログを出す（保存はする）
+- `metrics`の重複（2026-11-11追加、`midterm_metrics_normalizer:2`）: 指標名・値・単位・`segment`・`consolidation_label`・`revision_role`・`bound`・`value_upper`・`target_fiscal_end`がすべて同じ行は、別のページに載った同じ目標とみなし、最初の1行だけを残す（`[NORMALIZE]`ログを出す）。`target_fiscal_end`か`value`が`null`の行は、同じ期・同じ値か判断できないのでまとめない。5367で、p.1「2031年3月期（計画）」とp.10「2030年度」の同じ目標が2行になった対策。プロンプトにも「同じ目標は1件にまとめる」と書いているが、LLMは期末をそろえても2行のまま返すことがあるため、コード側でも除く
 
 正規化後の結果をrunの出力として記録するため、metrics stageの`extractor_version`は`<LLM関数のEXTRACTOR_VERSION>+<NORMALIZER_VERSION>`とする。正規化の規則を変えたら`NORMALIZER_VERSION`を上げる。
 

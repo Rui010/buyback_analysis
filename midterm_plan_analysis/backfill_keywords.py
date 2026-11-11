@@ -16,6 +16,7 @@ from midterm_plan_analysis.usecase.get_midterm_plans_missing_keywords import (
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data_by_urls
 from midterm_plan_analysis.usecase.save_midterm_result import save_backfilled_keywords
 from midterm_plan_analysis.usecase.run_midterm_stages import run_midterm_keywords
+from midterm_plan_analysis.usecase.tdnet_date import pdf_folder_str
 from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
 from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
@@ -71,12 +72,11 @@ def main():
             title, name = tdnet_row["title"], tdnet_row["name"]
             if recorder is not None:
                 recorder.start_document(plan.url)
-            pud_date_str = (plan.disclosure_date or "").replace("-", "")
 
-            # provenance有効時は台帳照合済みのPDFだけを使う（台帳の公表日はTDnet行の値）
+            # provenance有効時は台帳照合済みのPDFだけを使う（台帳の公表日・保存フォルダはTDnet行の日付）
             pdf_input = prepare_pdf_input(
                 recorder, url=plan.url, disclosure_date=tdnet_row["date"], time=tdnet_row["time"],
-                pud_date_str=pud_date_str, pdf_root=PDF_DOWNLOAD_PATH,
+                pud_date_str=pdf_folder_str(tdnet_row["date"]), pdf_root=PDF_DOWNLOAD_PATH,
                 use_native=USE_NATIVE_PDF, stage="keywords",
             )
             if pdf_input is None:

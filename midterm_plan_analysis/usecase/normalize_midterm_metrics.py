@@ -8,6 +8,9 @@ LLMの出力を引継ぎ仕様（ir-analytics-platform docs/plans/handoffs/buyba
 - target_scope・revision_role・consolidation_label・bound・kind: 許可値以外はunknown・current・null
 - page: 1以上の整数。LLMがページの境目を見られない入力（page_available=False）では常にnull
 - reference_values: 配列でなければ空配列
+- metricsの重複: 指標名・値・単位・segment・連結区分・見直し前後・bound・上限・期末（null以外）が同じ行は、
+  別ページの同じ目標として最初の1行だけ残す（5367で「2031年3月期」「2030年度」の2行になった対策）。
+  期末か値がnullの行は同じ期・同じ値か判断できないので残す
 
 正規化の規則を変えたら NORMALIZER_VERSION を上げること（metrics stageのextractor_versionに含まれる）。
 """
@@ -20,7 +23,7 @@ from buyback_analysis.interface.logger import Logger
 
 logger = Logger()
 
-NORMALIZER_VERSION = "midterm_metrics_normalizer:1"
+NORMALIZER_VERSION = "midterm_metrics_normalizer:2"
 
 TARGET_SCOPES = {"plan_final", "plan_interim", "long_term", "cumulative", "unknown"}
 # 計画期間を基準に決める種類（計画期間が分からない文書ではunknownにする。cumulativeは期間に依らない）
@@ -190,6 +193,33 @@ def _duplicate_key(item: dict, period_field: str):
     )
 
 
+def _same_target_key(item: dict):
+    if item.get("value") is None or item.get("target_fiscal_end") is None:
+        return None
+    return (
+        item.get("name"), item.get("value"), item.get("unit"), item.get("segment"),
+        item.get("consolidation_label"), item.get("revision_role"), item.get("bound"),
+        item.get("value_upper"), item.get("target_fiscal_end"),
+    )
+
+
+def _merge_duplicate_metrics(metrics: list[dict], log_context: str) -> list[dict]:
+    seen, merged = set(), []
+    for item in metrics:
+        key = _same_target_key(item)
+        if key is not None and key in seen:
+            logger.info(
+                f"[NORMALIZE] 同じ目標の重複を1行にまとめました: name={item.get('name')} value={item.get('value')} "
+                f"fiscal_end={item.get('target_fiscal_end')} label={item.get('target_period_label')} "
+                f"page={item.get('page')} {log_context}"
+            )
+            continue
+        if key is not None:
+            seen.add(key)
+        merged.append(item)
+    return merged
+
+
 def _warn_duplicates(metrics: list[dict], references: list[dict], log_context: str) -> None:
     target_keys = {_duplicate_key(m, "target_period_label") for m in metrics if m.get("value") is not None}
     for ref in references:
@@ -212,10 +242,10 @@ def normalize_midterm_result(result, *, page_available: bool, log_context: str =
     plan_period_known = any(data.get(field) not in (None, "") for field in PLAN_END_FIELDS)
     metrics = data.get("metrics")
     if metrics is not None:
-        data["metrics"] = [
+        data["metrics"] = _merge_duplicate_metrics([
             _normalize_metric(m, page_available=page_available, plan_period_known=plan_period_known)
             for m in _dicts(metrics)
-        ]
+        ], log_context)
     data["reference_values"] = [
         _normalize_reference(r, page_available=page_available) for r in _dicts(data.get("reference_values"))
     ]

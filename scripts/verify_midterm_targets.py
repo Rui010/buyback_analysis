@@ -22,9 +22,10 @@ from dotenv import load_dotenv
 
 from buyback_analysis.interface.llm_usage import capture_llm_usage
 from buyback_analysis.interface.postgresql_engine import get_database_engine
-from midterm_plan_analysis.usecase.compare_midterm_fixture import compare_document, summarize
+from midterm_plan_analysis.usecase.compare_midterm_fixture import compare_document, summarize, summarize_breakdown
 from midterm_plan_analysis.usecase.determine_midterm_status import determine_midterm_status
 from midterm_plan_analysis.usecase.get_tdnet_midterm_data import get_tdnet_midterm_data_by_urls
+from midterm_plan_analysis.usecase.tdnet_date import pdf_folder_str
 from midterm_plan_analysis.usecase.run_midterm_stages import (
     METRICS_PROMPT_NATIVE,
     METRICS_PROMPT_TEXT,
@@ -44,6 +45,13 @@ CONDITION_TITLES = {
     "6": "8185の連結・単体がconsolidation_labelで区別",
     "7": "1814・4042の全社目標にsegmentなし",
     "8": "撤回・延期のextraction_statusが従来どおり",
+}
+BREAKDOWN_TITLES = {
+    "1_final": "条件1のうち最終年度（period_end = plan_period_end）",
+    "1_other": "条件1のうちそれ以外（途中年度・長期など）",
+    "5_actual": "条件5のうち実績（actual）",
+    "5_estimate": "条件5のうち見込（estimate）",
+    "5_company_forecast": "条件5のうち会社予想（company_forecast）",
 }
 
 
@@ -68,7 +76,7 @@ def extract(fixture: dict, use_native: bool, pdf_root: str) -> list[dict]:
         entry["title"] = title
         pdf_input = prepare_pdf_input(
             None, url=doc["url"], disclosure_date=row["date"], time=row["time"],
-            pud_date_str=row["date"].strftime("%Y%m%d"), pdf_root=pdf_root,
+            pud_date_str=pdf_folder_str(row["date"]), pdf_root=pdf_root,
             use_native=use_native, stage="metrics", page_markers=True,
         )
         if pdf_input is None:
@@ -115,6 +123,11 @@ def write_report(path: Path, results: list[dict], meta: dict) -> None:
     lines += [f"- LLM呼び出し: {calls}回、token 入力{tokens_in:,} / 出力{tokens_out:,}", ""]
     lines += ["| # | 条件 | 判定数 | 不一致 |", "|---|---|---:|---:|"]
     lines += [f"| {n} | {CONDITION_TITLES[n]} | {t['checked']} | {t['failed']} |" for n, t in total.items()]
+    breakdown = summarize_breakdown(results)
+    lines += ["", "| 内訳 | 判定数 | 不一致 |", "|---|---:|---:|"]
+    lines += [f"| {title} | {breakdown[key]['checked']} | {breakdown[key]['failed']} |"
+              for key, title in BREAKDOWN_TITLES.items()]
+    lines += ["", f"- 正解データにない全社の行: {breakdown['unmatched_company_metrics']}件"]
     for r in results:
         lines += ["", f"## {r['security_code']} {r['disclosure_date']} {r.get('title', '')}", ""]
         if r.get("error"):
@@ -158,6 +171,10 @@ def main() -> None:
     write_report(out / "report.md", results, meta)
     for number, total in summarize(results).items():
         print(f"条件{number}: {total['checked'] - total['failed']}/{total['checked']}")
+    breakdown = summarize_breakdown(results)
+    for key in BREAKDOWN_TITLES:
+        print(f"  {key}: {breakdown[key]['checked'] - breakdown[key]['failed']}/{breakdown[key]['checked']}")
+    print(f"  正解データにない全社の行: {breakdown['unmatched_company_metrics']}件")
 
 
 if __name__ == "__main__":

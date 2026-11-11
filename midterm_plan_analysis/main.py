@@ -20,6 +20,7 @@ from midterm_plan_analysis.usecase.save_midterm_result import (
     MIDTERM_TABLES,
     save_midterm_result,
 )
+from midterm_plan_analysis.usecase.tdnet_date import disclosure_date_str, pdf_folder_str
 from midterm_plan_analysis.usecase.run_midterm_stages import (
     run_midterm_classification,
     run_midterm_keywords,
@@ -90,7 +91,7 @@ def main():
             total_processed += 1
             code = str(row["code"])
             url = row["link"]
-            disclosure_date = row["date"].strftime("%Y-%m-%d")
+            disclosure_date = disclosure_date_str(row["date"])
 
             if not RERUN_URLS and _already_exists(session, code, url):
                 logger.info(f"処理済みのためスキップ: {code} - {url}")
@@ -105,7 +106,7 @@ def main():
             # provenance有効時は台帳照合済みのPDFだけをnative/textの両経路で使う
             pdf_input = prepare_pdf_input(
                 recorder, url=url, disclosure_date=row["date"], time=row["time"],
-                pud_date_str=row["date"].strftime("%Y%m%d"), pdf_root=PDF_DOWNLOAD_PATH,
+                pud_date_str=pdf_folder_str(row["date"]), pdf_root=PDF_DOWNLOAD_PATH,
                 use_native=USE_NATIVE_PDF, stage="metrics",
                 page_markers=True,  # text方式ではmetricsにページの目印入りの本文を送る（keywords等は従来の本文）
             )

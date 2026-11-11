@@ -5,6 +5,7 @@ from midterm_plan_analysis.usecase.compare_midterm_fixture import (
     fiscal_end,
     metric_code,
     summarize,
+    summarize_breakdown,
     to_yen,
 )
 
@@ -167,6 +168,56 @@ def test_null_period_with_other_year_is_period_mismatch():
     doc = _doc([_value(period_end="2028-03-31")])
     result = compare_document(doc, {"data": {"metrics": [_metric(fiscal=None, target_year=2030)]}}, "ok")
     assert "period_mismatch" in _failures(result, "1")[0]
+
+
+def test_condition_1_breakdown_separates_final_year_from_others():
+    # 最終年度（period_end == plan_period_end）とそれ以外（途中年度・長期）に分ける
+    doc = _doc([_value(period_end="2028-03-31"), _value(period_end="2027-03-31", value=900),
+                _value(period_end="2031-03-31", value=1500)])
+    metrics = [_metric(), _metric(value=1500, fiscal="2031/03", target_scope="long_term")]
+    result = compare_document(doc, {"data": {"metrics": metrics}}, "ok")
+    breakdown = result["breakdown"]["1"]
+    assert breakdown["final"] == {"checked": 1, "failures": []}
+    assert breakdown["other"]["checked"] == 2
+    assert len(breakdown["other"]["failures"]) == 1
+    assert "2027-03-31" in breakdown["other"]["failures"][0]
+    # 内訳の合計は条件1と一致する（判定の規則は変えない）
+    assert result["conditions"]["1"]["checked"] == 3
+    assert len(_failures(result, "1")) == 1
+
+
+def test_condition_1_without_plan_end_is_counted_as_other():
+    doc = _doc([_value()], plan_end=None)
+    result = compare_document(doc, {"data": {"metrics": [_metric()]}}, "ok")
+    assert result["breakdown"]["1"]["final"]["checked"] == 0
+    assert result["breakdown"]["1"]["other"]["checked"] == 1
+
+
+def test_condition_5_breakdown_by_value_kind():
+    doc = _doc([_value(kind="actual", period_end="2025-03-31", value=900),
+                _value(kind="estimate", period_end="2026-03-31", value=950),
+                _value(kind="company_forecast", period_end="2026-03-31", value=960)])
+    refs = [_ref(), _ref(value=950, fiscal="2026/03", kind="estimate")]
+    result = compare_document(doc, {"data": {"reference_values": refs}}, "ok")
+    breakdown = result["breakdown"]["5"]
+    assert breakdown["actual"] == {"checked": 1, "failures": []}
+    assert breakdown["estimate"] == {"checked": 1, "failures": []}
+    assert breakdown["company_forecast"]["checked"] == 1
+    assert len(breakdown["company_forecast"]["failures"]) == 1
+
+
+def test_summarize_breakdown_counts_failures_and_unmatched_rows():
+    doc = _doc([_value(), _value(period_end="2027-03-31", value=900),
+                _value(kind="actual", period_end="2025-03-31", value=800)])
+    metrics = [_metric(), _metric(value=1000, fiscal="2027/03", target_year=2027, name="営業利益")]
+    docs = [{"comparison": compare_document(doc, {"data": {"metrics": metrics}}, "ok")}]
+    total = summarize_breakdown(docs)
+    assert total["1_final"] == {"checked": 1, "failed": 0}
+    assert total["1_other"] == {"checked": 1, "failed": 1}
+    assert total["5_actual"] == {"checked": 1, "failed": 1}
+    assert total["5_estimate"] == {"checked": 0, "failed": 0}
+    assert total["5_company_forecast"] == {"checked": 0, "failed": 0}
+    assert total["unmatched_company_metrics"] == 1
 
 
 def test_reference_null_period_uses_period_label_year():

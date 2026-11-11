@@ -18,6 +18,9 @@ TARGET_KINDS = {"plan_target": "current", "previous_target": "previous"}
 REFERENCE_KINDS = {"actual": "actual", "estimate": "estimate", "company_forecast": "forecast"}
 # 正解データのうち、抽出結果のmetricsに入ってはいけない値
 NON_TARGET_KINDS = set(REFERENCE_KINDS)
+# 条件1の内訳: 最終年度（period_endがplan_period_endと同じ）とそれ以外。条件5の内訳: 正解データのvalue_kind
+BREAKDOWN_1 = ("final", "other")
+BREAKDOWN_5 = tuple(REFERENCE_KINDS)
 
 _EXCLUDED_NAME_PARTS = ("率", "比", "成長", "CAGR", "増減", "伸び", "シェア", "構成")
 
@@ -120,13 +123,20 @@ def compare_document(doc: dict, result: dict | None, extraction_status: str | No
     factor = RAW_UNIT_FACTORS.get(doc.get("raw_unit"))
     plan_end = doc.get("plan_period_end")
     conditions = {str(n): {"checked": 0, "failures": []} for n in range(1, 9)}
+    # 条件1・5の内訳（判定の規則は変えず、同じ判定を種類別にも数える）
+    breakdown = {
+        "1": {part: {"checked": 0, "failures": []} for part in BREAKDOWN_1},
+        "5": {part: {"checked": 0, "failures": []} for part in BREAKDOWN_5},
+    }
     notes = []
     matched_ids = set()
 
-    def check(number, ok, reason):
-        conditions[number]["checked"] += 1
-        if not ok:
-            conditions[number]["failures"].append(reason)
+    def check(number, ok, reason, part=None):
+        targets = [conditions[number]] + ([breakdown[number][part]] if part is not None else [])
+        for target in targets:
+            target["checked"] += 1
+            if not ok:
+                target["failures"].append(reason)
 
     for value in doc.get("values", []):
         kind = value["value_kind"]
@@ -142,7 +152,8 @@ def compare_document(doc: dict, result: dict | None, extraction_status: str | No
                 matched_ids.add(id(item))
             if kind == "plan_target":
                 check("1", status in ("ok", "period_unknown"),
-                      f"{label}: {status}" + (f" target_fiscal_end={item.get('target_fiscal_end')}" if item else ""))
+                      f"{label}: {status}" + (f" target_fiscal_end={item.get('target_fiscal_end')}" if item else ""),
+                      part="final" if plan_end and value["period_end"] == plan_end else "other")
                 if status == "period_unknown":
                     notes.append(f"{label}: target_fiscal_endがnull（値で照合）")
                 if plan_end and value["period_end"] > plan_end:
@@ -172,7 +183,8 @@ def compare_document(doc: dict, result: dict | None, extraction_status: str | No
                                     fiscal_field="period_fiscal_end", label_field="period_label")
             expected_kind = REFERENCE_KINDS[kind]
             check("5", ref_status in ("ok", "period_unknown") and ref.get("kind") == expected_kind,
-                  f"{label}: reference_values {ref_status}" + (f" kind={ref.get('kind')}" if ref else ""))
+                  f"{label}: reference_values {ref_status}" + (f" kind={ref.get('kind')}" if ref else ""),
+                  part=kind)
 
     extras = [
         f"{m.get('name')} {m.get('value')}{m.get('unit') or ''} {m.get('target_fiscal_end')} "
@@ -188,7 +200,7 @@ def compare_document(doc: dict, result: dict | None, extraction_status: str | No
     elif extraction_status != expected_status:
         notes.append(f"extraction_status={extraction_status}（従来 {expected_status}）")
 
-    return {"conditions": conditions, "unmatched_company_metrics": extras, "notes": notes}
+    return {"conditions": conditions, "breakdown": breakdown, "unmatched_company_metrics": extras, "notes": notes}
 
 
 def summarize(per_document: list[dict]) -> dict:
@@ -198,4 +210,20 @@ def summarize(per_document: list[dict]) -> dict:
         for number, condition in doc["comparison"]["conditions"].items():
             total[number]["checked"] += condition["checked"]
             total[number]["failed"] += len(condition["failures"])
+    return total
+
+
+def summarize_breakdown(per_document: list[dict]) -> dict:
+    """条件1（最終年度・それ以外）と条件5（種類別）の内訳、正解データにない全社の行数を合算する。"""
+    total = {f"{number}_{part}": {"checked": 0, "failed": 0}
+             for number, parts in (("1", BREAKDOWN_1), ("5", BREAKDOWN_5)) for part in parts}
+    unmatched = 0
+    for doc in per_document:
+        comparison = doc["comparison"]
+        for number, parts in comparison.get("breakdown", {}).items():
+            for part, condition in parts.items():
+                total[f"{number}_{part}"]["checked"] += condition["checked"]
+                total[f"{number}_{part}"]["failed"] += len(condition["failures"])
+        unmatched += len(comparison["unmatched_company_metrics"])
+    total["unmatched_company_metrics"] = unmatched
     return total
