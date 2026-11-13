@@ -5,6 +5,7 @@ SQLiteは読み取り専用で開き、何も書かない（元の抽出結果�
 レビュー・手修正は下流（PostgreSQL側）で行い、SQLiteへは書き戻さない。
 
 使い方:
+    python -m scripts.review_midterm_duplicate_candidates                      # .envのSQLITE_DB_URLのDB
     python -m scripts.review_midterm_duplicate_candidates --db-path <SQLiteファイル>
     python -m scripts.review_midterm_duplicate_candidates --db-path <SQLiteファイル> --out <review.json> --urls <URL>,<URL>
 
@@ -17,10 +18,13 @@ JSONの形は docs/midterm_plan_design.md「重複候補のレビュー」を参
 import argparse
 import datetime
 import json
+import os
 import sqlite3
 from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from midterm_plan_analysis.usecase.review_duplicate_candidates import build_review_document, build_review_entries
@@ -40,6 +44,20 @@ DEFAULT_REVIEW_DIR = "midterm_duplicate_review"
 def default_out_path(db_path: Path, now: datetime.datetime) -> Path:
     """SQLiteファイルと同じ場所の midterm_duplicate_review/review_<日時>.json（日時はローカル時刻）。"""
     return db_path.parent / DEFAULT_REVIEW_DIR / f"review_{now.astimezone():%Y%m%d_%H%M%S}.json"
+
+
+def resolve_db_path(db_path: Path | None, env=None) -> Path:
+    """--db-pathがなければSQLITE_DB_URL（パイプラインと同じDB）のファイルパスを使う。"""
+    if db_path is not None:
+        return db_path
+    env = os.environ if env is None else env
+    url = env.get("SQLITE_DB_URL")
+    if not url:
+        raise ValueError("--db-pathを指定するか、SQLITE_DB_URLを設定してください")
+    parsed = make_url(url)
+    if parsed.get_backend_name() != "sqlite" or not parsed.database:
+        raise ValueError(f"SQLITE_DB_URLがSQLiteのファイルを指していません: {url}")
+    return Path(parsed.database)
 
 
 def readonly_engine(db_path: Path):
@@ -67,13 +85,14 @@ def export_review(db_path: Path, out_path: Path | None = None, urls=None, clock=
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db-path", required=True, type=Path)
+    parser.add_argument("--db-path", type=Path, help="省略時は.envのSQLITE_DB_URL")
     parser.add_argument("--out", type=Path, help=f"省略時は<SQLiteと同じ場所>/{DEFAULT_REVIEW_DIR}/review_<日時>.json")
     parser.add_argument("--urls", default="", help="カンマ区切り。省略時はextraction_status=okの全文書")
     args = parser.parse_args()
+    load_dotenv()
 
     urls = [u.strip() for u in args.urls.split(",") if u.strip()]
-    document, out_path = export_review(args.db_path, args.out, urls=urls or None)
+    document, out_path = export_review(resolve_db_path(args.db_path), args.out, urls=urls or None)
     entries = document["entries"]
     for entry in entries:
         print(f"{entry['code']} {entry['disclosure_date']} 候補{len(entry['candidates'])}件 "

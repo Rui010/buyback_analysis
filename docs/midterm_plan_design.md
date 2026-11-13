@@ -123,11 +123,11 @@ ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\pl
 流れ:
 
 1. パイプライン: `normalize_midterm_result()`は候補を削除せず残し、`[REVIEW] possible_duplicate_target`ログを出す（出力は変えないので`NORMALIZER_VERSION`は据え置き）
-2. 出力: `scripts/review_midterm_duplicate_candidates.py`がSQLiteを読み取り専用で開き、`extraction_status=ok`の採用行から候補のある文書だけをレビュー用JSONに出す。元の抽出結果・既存versionは変えない。自動では実行しないので、必要なときにサーバーで実行して下流へ渡す
+2. 出力: `scripts/review_midterm_duplicate_candidates.py`がSQLiteを読み取り専用で開き、`extraction_status=ok`の採用行から候補のある文書だけをレビュー用JSONに出す。元の抽出結果・既存versionは変えない。サーバーのバッチ`run_midterm_duplicate_review.bat`で毎週土曜9:00に実行する（610番。`stock-analysis/docs/batch_schedule.md`）
    ```powershell
-   .\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates --db-path <SQLite> [--out <review.json>] [--urls <URL>,<URL>]
+   .\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates [--db-path <SQLite>] [--out <review.json>] [--urls <URL>,<URL>]
    ```
-   `--out`を省略すると、SQLiteファイルと同じ場所の`midterm_duplicate_review/review_<日時>.json`に出す（日時はローカル時刻）
+   `--out`を省略すると、SQLiteファイルと同じ場所の`midterm_duplicate_review/review_<日時>.json`に出す（日時はローカル時刻）。`--db-path`を省略すると`.env`の`SQLITE_DB_URL`のDBを使う
 3. 判断・修正（下流）: 各候補が同じ目標（`merged`）か別の目標（`distinct`）かを判断し、修正は下流の修正用の仕組みで持つ。PostgreSQLの`buyback_midterm_plans`はSQLiteからの同期コピーなので、直接直すと次の同期で上書きされうる（同期の挙動はbuyback_app側で要確認）。SQLiteへは書き戻さない（`import_midterm_verified_results.py`はレビュー用JSONを扱わない）
 4. 古くなった修正の検知（下流）: 修正には`adopted_version_id`・`source_hash`・`candidate_id`を控える。再抽出（RERUN）などで現在の採用version・source hashと違えば、その修正は使わず最新データでレビューし直す
 

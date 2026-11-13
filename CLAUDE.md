@@ -35,8 +35,8 @@ python -m buyback_analysis.main
 python -m midterm_plan_analysis.main
 
 # 中期経営計画の重複候補をレビュー用JSONに出す（読み取りのみ。判断・手修正は下流で行い、SQLiteへは書き戻さない）
-# --out省略時は <SQLiteと同じ場所>/midterm_duplicate_review/review_<日時>.json
-python -m scripts.review_midterm_duplicate_candidates --db-path <SQLite>
+# --db-path省略時はSQLITE_DB_URL、--out省略時は <SQLiteと同じ場所>/midterm_duplicate_review/review_<日時>.json（毎週土曜にバッチで実行）
+python -m scripts.review_midterm_duplicate_candidates
 
 # 中期経営計画の過去データへのキーワードバックフィル（1回でMIDTERM_BACKFILL_KEYWORDS_LIMIT件まで処理、繰り返し実行で続きから再開）
 python -m midterm_plan_analysis.backfill_keywords

@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from buyback_analysis.models.base import Base
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan
 from midterm_plan_analysis.models.midterm_plan_keyword import MidtermPlanKeyword
-from scripts.review_midterm_duplicate_candidates import default_out_path, export_review
+from scripts.review_midterm_duplicate_candidates import default_out_path, export_review, resolve_db_path
 from tdnet_provenance.models.base import ProvenanceBase
 from tdnet_provenance.models.tdnet_source_document import TdnetSourceDocument
 
@@ -90,3 +90,21 @@ def test_default_out_path_uses_local_time():
     path = default_out_path(db, now)
     assert path.parent == Path("//host/share/sqlite_db/midterm_duplicate_review")
     assert path.name == f"review_{now.astimezone():%Y%m%d_%H%M%S}.json"
+
+
+class TestDbPathFromEnv:
+    @pytest.mark.parametrize("url,expected", [
+        ("sqlite:///C:/apps/data/buyback.db", Path("C:/apps/data/buyback.db")),
+        ("sqlite:///./data.db", Path("./data.db")),
+    ])
+    def test_reads_sqlite_db_url(self, url, expected):
+        assert resolve_db_path(None, env={"SQLITE_DB_URL": url}) == expected
+
+    def test_explicit_path_wins(self):
+        assert resolve_db_path(Path("x.db"), env={"SQLITE_DB_URL": "sqlite:///y.db"}) == Path("x.db")
+
+    @pytest.mark.parametrize("env", [{}, {"SQLITE_DB_URL": ""}, {"SQLITE_DB_URL": "sqlite://"},
+                                     {"SQLITE_DB_URL": "postgresql://h/db"}])
+    def test_missing_or_unusable_url_raises(self, env):
+        with pytest.raises(ValueError):
+            resolve_db_path(None, env=env)

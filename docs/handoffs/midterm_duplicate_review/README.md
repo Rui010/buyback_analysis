@@ -16,16 +16,18 @@
 
 1. **手修正は修正用の仕組みで持つ**: `buyback_midterm_plans`はSQLiteからの同期コピーのため、直接直すと次の同期で上書きされうる（同期の挙動はbuyback_app側で要確認）。修正は別の仕組み（例: 修正用テーブル）で持ち、読むときに重ねる形を想定している
 2. **修正が古くなったら使わない**: 修正には、JSONの`adopted_version_id`・`source_hash`・`candidate_id`を一緒に控える。再抽出（RERUN）などで採用版が変わると、`adopted_version_id`が変わる。現在の値と一致しない修正は自動で使わず、最新データでレビューし直す
-3. **JSONの受け渡し方法を決める**: 当面は、buyback_analysis側で必要なときにスクリプトを実行し、JSONファイルを渡す手動運用を想定している。下流がPostgreSQLから自分で同じ判定をしたい場合は、採用version ID・source hashがPostgreSQL側にあるかの確認が必要
+3. **毎週のJSONを見る**: JSONは毎週土曜9:00に`\100.64.1.30\dq-c\sqlite_db\midterm_duplicate_revieweview_<日時>.json`へ1ファイルずつ出す予定（§3）。毎回全文書を見直すので、前回と同じ候補（同じ`candidate_id`）も毎週出る。判断済みかどうかは下流で`candidate_id`を使って管理してほしい
 
 ## 3. JSONの出し方
 
-サーバー（またはUNCパス経由）で実行する。SQLiteは読み取り専用で開き、何も書かない。
+サーバーのバッチ`run_midterm_duplicate_review.bat`（610番・毎週土曜9:00）で実行する予定。SQLiteは読み取り専用で開き、何も書かない。手で実行する場合は次のとおり。
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates --db-path \\100.64.1.30\dq-c\sqlite_db\buyback.db
-# → \\100.64.1.30\dq-c\sqlite_db\midterm_duplicate_review\review_<日時>.json
+.\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates
+# → <SQLiteと同じ場所>\midterm_duplicate_review\review_<日時>.json
 ```
+
+- `--db-path`を省略すると、`.env`の`SQLITE_DB_URL`（パイプラインと同じDB）を使う
 
 - `--out`で出力先を指定できる。省略時は、SQLiteと同じ場所の`midterm_duplicate_review/review_<ローカル日時>.json`
 - `--urls <URL>,<URL>`で文書を絞れる。省略時は`extraction_status=ok`の全文書を見て、候補のある文書だけを出す
@@ -87,7 +89,8 @@
 
 - **ページ番号のない行は検出されない**: ページの目印を入れる前のtext方式で抽出した行は、`page`がnullのため対象外
 - **`distinct`の判断はbuyback_analysis側に残らない**: 次回のJSONにも同じ候補（同じ`candidate_id`）が出る。判断済みかどうかは下流で`candidate_id`を使って管理してほしい
-- **本番での件数は未確認**: 候補が何件あるかはまだ分からない。必要なら最初のJSONを出して件数を共有する
+- **本番での件数は未確認**: 候補が何件あるかは、最初の週次実行まで分からない
+- **週次バッチの登録**: 610番は、2026-11-13時点ではまだサーバーに登録していない
 - **同期の上書き**: `buyback_midterm_plans`が同期で上書きされるかは未確認（2-1）
 
 ## 7. 参照
