@@ -1,9 +1,9 @@
 """中計の採用版（midterm_plans）から重複候補を探し、レビュー用JSONの中身を作る。読み取りだけで、何も書かない。
 
-レビュー用JSONの各entryは、修正の前提（採用version ID・source hash）と修正対象のresult
-（post_midterm_planに渡す形 {"type", "data"}）を持つ。人手・Chatはresultのmetricsを直し、各候補の
-resolutionに "merged"（1行にまとめた）か "distinct"（別の目標なので両方残す）を書く。
-直したJSONは scripts/import_midterm_verified_results.py で取り込む（import_reviewed_result.pyが検証する）。
+レビューと手修正は下流（PostgreSQL側）で行い、SQLiteはLLMの抽出結果のまま変えない。
+各entryは、どの抽出結果を見たか（採用version ID・source hash・prompt hash）と、その時点の結果
+（{"type", "data"}）・重複候補を持つ。下流は修正時にversion ID・source hashを控え、
+現在の値と違えば（再抽出などで採用版が変わった）その修正は使わず、最新データでレビューし直す。
 """
 
 import json
@@ -27,9 +27,9 @@ PLAN_FIELDS = (
     "plan_start_fiscal_end", "plan_end_fiscal_end",
 )
 INSTRUCTIONS = (
-    "各entryのresult.data.metricsを直し、candidatesの各resolutionに merged（1行にまとめた）か "
-    "distinct（別の目標なので両方残す）を書く。adopted_version_id・source_hash・candidatesのcandidate_idは変えない。"
-    "取込み時にschema・値・期末・重複を再検査し、再検出された候補がdistinctでなければそのURLは採用しない。"
+    "各候補が同じ目標か（merged）別の目標か（distinct）を判断し、resolutionに記録する。修正は下流で持ち、"
+    "SQLiteには書き戻さない。修正にはadopted_version_id・source_hash・candidate_idを控え、"
+    "現在の採用version・source hashと違う場合は修正を使わず最新データでレビューし直す。"
 )
 
 

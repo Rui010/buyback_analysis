@@ -34,9 +34,9 @@ python -m buyback_analysis.main
 # 中期経営計画パイプラインの実行
 python -m midterm_plan_analysis.main
 
-# 中期経営計画の重複候補をレビュー用JSONに出す（読み取りのみ）→ 修正後は import_midterm_verified_results で取り込む
-python -m scripts.review_midterm_duplicate_candidates --db-path <SQLite> --out <review.json>
-python -m scripts.import_midterm_verified_results --db-path <SQLite> --results <review.json> [--apply]
+# 中期経営計画の重複候補をレビュー用JSONに出す（読み取りのみ。判断・手修正は下流で行い、SQLiteへは書き戻さない）
+# --out省略時は <SQLiteと同じ場所>/midterm_duplicate_review/review_<日時>.json
+python -m scripts.review_midterm_duplicate_candidates --db-path <SQLite>
 
 # 中期経営計画の過去データへのキーワードバックフィル（1回でMIDTERM_BACKFILL_KEYWORDS_LIMIT件まで処理、繰り返し実行で続きから再開）
 python -m midterm_plan_analysis.backfill_keywords
@@ -123,7 +123,6 @@ midterm_plan_analysis/
     ├── compare_midterm_fixture.py              # 正解データとの突き合わせ（scripts/verify_midterm_targets.py）
     ├── detect_duplicate_candidates.py          # 重複候補（possible_duplicate_target）の検出（LLMを呼ばない）
     ├── review_duplicate_candidates.py          # 採用版から重複候補のレビュー用JSONを作る（scripts/review_midterm_duplicate_candidates.py）
-    ├── import_reviewed_result.py               # 修正済みレビュー用JSONの検証と採用（scripts/import_midterm_verified_results.py）
     ├── schemas.py                              # キーワード抽出のresponseSchema（Pydantic）
     ├── extract_midterm_keywords.py             # キーワード抽出（テキスト方式）
     ├── extract_midterm_keywords_native.py      # キーワード抽出（ネイティブPDF方式）

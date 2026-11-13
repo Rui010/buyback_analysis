@@ -1,7 +1,8 @@
-"""重複候補のレビュー: JSON出力 → 修正 → 既存の取込みスクリプトで採用、をファイルのSQLiteで通す。"""
+"""重複候補のレビュー用JSON出力を、ファイルのSQLiteで通す（SQLiteには書かない）。"""
 
 import datetime
 import json
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,11 +11,8 @@ from sqlalchemy.orm import sessionmaker
 from buyback_analysis.models.base import Base
 from midterm_plan_analysis.models.midterm_plan import MidtermPlan
 from midterm_plan_analysis.models.midterm_plan_keyword import MidtermPlanKeyword
-from scripts.import_midterm_verified_results import run_import
-from scripts.review_midterm_duplicate_candidates import export_review
+from scripts.review_midterm_duplicate_candidates import default_out_path, export_review
 from tdnet_provenance.models.base import ProvenanceBase
-from tdnet_provenance.models.result_adoption import ResultAdoption
-from tdnet_provenance.models.result_version import ResultVersion
 from tdnet_provenance.models.tdnet_source_document import TdnetSourceDocument
 
 URL = "https://www.release.tdnet.info/inbs/140120250430500001.pdf"
@@ -57,14 +55,10 @@ def db_path(tmp_path):
     return path
 
 
-def _session(db_path):
-    engine = create_engine(f"sqlite:///{db_path.as_posix()}", future=True)
-    return sessionmaker(bind=engine, future=True)()
-
-
 def test_export_does_not_write_and_lists_5367_candidates(db_path, tmp_path):
     before = db_path.read_bytes()
-    document = export_review(db_path, tmp_path / "out" / "review.json", clock=lambda: NOW)
+    document, out_path = export_review(db_path, tmp_path / "out" / "review.json", clock=lambda: NOW)
+    assert out_path == tmp_path / "out" / "review.json"
 
     assert db_path.read_bytes() == before
     saved = json.loads((tmp_path / "out" / "review.json").read_text(encoding="utf-8"))
@@ -83,43 +77,16 @@ def test_export_requires_history_tables(tmp_path):
         export_review(path, tmp_path / "review.json")
 
 
-def test_reviewed_json_is_adopted_through_existing_import(db_path, tmp_path):
-    review_path = tmp_path / "review.json"
-    document = export_review(db_path, review_path, clock=lambda: NOW)
-    entry = document["entries"][0]
-    entry["result"]["data"]["metrics"] = entry["result"]["data"]["metrics"][:2]
-    for candidate in entry["candidates"]:
-        candidate["resolution"] = "merged"
-    review_path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
-
-    assert run_import(db_path, review_path, apply=False) == 1  # dry-runは書かない
-    with _session(db_path) as s:
-        assert s.query(ResultVersion).count() == 0
-
-    assert run_import(db_path, review_path, apply=True) == 1
-    with _session(db_path) as s:
-        assert [m["page"] for m in json.loads(s.query(MidtermPlan).one().metrics)] == [1, 1]
-        assert {v.origin for v in s.query(ResultVersion).all()} == {"legacy", "unrecorded"}
-        assert s.query(ResultAdoption).count() == 1
-    assert list(tmp_path.glob("buyback.db.bak-midterm-import-*"))
-
-    # 採用版が変わったので、同じJSONはもう取り込めない
-    assert run_import(db_path, review_path, apply=True) == 0
+def test_default_output_is_next_to_sqlite(db_path):
+    document, out_path = export_review(db_path, clock=lambda: NOW)
+    assert out_path.parent == db_path.parent / "midterm_duplicate_review"
+    assert out_path.name.startswith("review_") and out_path.suffix == ".json"
+    assert json.loads(out_path.read_text(encoding="utf-8")) == document
 
 
-def test_unreviewed_json_is_rejected(db_path, tmp_path, capsys):
-    review_path = tmp_path / "review.json"
-    export_review(db_path, review_path, clock=lambda: NOW)
-    assert run_import(db_path, review_path, apply=True) == 0
-    assert "possible_duplicate_target" in capsys.readouterr().out
-    with _session(db_path) as s:
-        assert json.loads(s.query(MidtermPlan).one().metrics) == METRICS
-        assert s.query(ResultVersion).count() == 0
-
-
-def test_wrong_format_version_is_rejected(db_path, tmp_path):
-    review_path = tmp_path / "review.json"
-    review_path.write_text(json.dumps({"kind": "midterm_duplicate_review", "format_version": 99, "entries": []}),
-                           encoding="utf-8")
-    with pytest.raises(ValueError):
-        run_import(db_path, review_path, apply=False)
+def test_default_out_path_uses_local_time():
+    now = datetime.datetime(2026, 11, 13, 6, 30, 0, tzinfo=datetime.timezone.utc)
+    db = Path("//host/share/sqlite_db/buyback.db")  # サーバーのUNCパス
+    path = default_out_path(db, now)
+    assert path.parent == Path("//host/share/sqlite_db/midterm_duplicate_review")
+    assert path.name == f"review_{now.astimezone():%Y%m%d_%H%M%S}.json"

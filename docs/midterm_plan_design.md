@@ -109,7 +109,7 @@ ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\pl
 
 #### 重複候補のレビュー（2026-11-13追加、`midterm_duplicate_detector:1`）
 
-正規化で自動統合するのは期末（`target_fiscal_end`）まで同じ明確な重複だけ。同じ期の同じ目標を別ページから2回取った可能性はあるが断定できない行の組は、削除せず`possible_duplicate_target`（重複候補）として人手・Chatのレビューに回す。LLMは追加で呼ばない。LLM出力の揺れ自体は許容し、直すのはレビューで判断した行だけにする。
+正規化で自動統合するのは期末（`target_fiscal_end`）まで同じ明確な重複だけ。同じ期の同じ目標を別ページから2回取った可能性はあるが断定できない行の組は、削除せず`possible_duplicate_target`（重複候補）としてレビュー用JSONに出す。LLMは追加で呼ばない。LLM出力の揺れ自体は許容し、**SQLiteはLLMの抽出結果のまま変えない。どれが本当の重複かの判断と手修正は、下流（PostgreSQL側）で行う**（2026-11-13決定）。
 
 候補の条件（`detect_duplicate_candidates.py`）。次をすべて満たす組:
 
@@ -123,12 +123,13 @@ ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\pl
 流れ:
 
 1. パイプライン: `normalize_midterm_result()`は候補を削除せず残し、`[REVIEW] possible_duplicate_target`ログを出す（出力は変えないので`NORMALIZER_VERSION`は据え置き）
-2. 出力: `scripts/review_midterm_duplicate_candidates.py`がSQLiteを読み取り専用で開き、`extraction_status=ok`の採用行から候補のある文書だけをレビュー用JSONに出す。元の抽出結果・既存versionは変えない
+2. 出力: `scripts/review_midterm_duplicate_candidates.py`がSQLiteを読み取り専用で開き、`extraction_status=ok`の採用行から候補のある文書だけをレビュー用JSONに出す。元の抽出結果・既存versionは変えない。自動では実行しないので、必要なときにサーバーで実行して下流へ渡す
    ```powershell
-   .\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates --db-path <SQLite> --out <review.json> [--urls <URL>,<URL>]
+   .\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates --db-path <SQLite> [--out <review.json>] [--urls <URL>,<URL>]
    ```
-3. 修正: 各entryの`result.data.metrics`を直し、各候補の`resolution`を`merged`（1行にまとめた）か`distinct`（別の目標なので両方残す）にする
-4. 取込み: 既存の`scripts/import_midterm_verified_results.py`に同じJSONを渡す（`--apply`なしは検査結果の表示だけ）。`kind=midterm_duplicate_review`なら`import_reviewed_result.py`が検査し、通ったURLだけ`import_verified_result`→`adopt_result`で新しい版（`origin=unrecorded`）として採用する。キーワード行は引き継ぐ
+   `--out`を省略すると、SQLiteファイルと同じ場所の`midterm_duplicate_review/review_<日時>.json`に出す（日時はローカル時刻）
+3. 判断・修正（下流）: 各候補が同じ目標（`merged`）か別の目標（`distinct`）かを判断し、修正は下流の修正用の仕組みで持つ。PostgreSQLの`buyback_midterm_plans`はSQLiteからの同期コピーなので、直接直すと次の同期で上書きされうる（同期の挙動はbuyback_app側で要確認）。SQLiteへは書き戻さない（`import_midterm_verified_results.py`はレビュー用JSONを扱わない）
+4. 古くなった修正の検知（下流）: 修正には`adopted_version_id`・`source_hash`・`candidate_id`を控える。再抽出（RERUN）などで現在の採用version・source hashと違えば、その修正は使わず最新データでレビューし直す
 
 レビュー用JSONの形（`format_version=1`）:
 
@@ -151,14 +152,6 @@ ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\pl
 ```
 
 - `adopted_version_id`は`result_adoptions`の最新の採用（採用記録がなければnull）。`source_hash`は`tdnet_source_documents`（台帳未登録ならnull）。`prompt_hash`は採用版の`run_ids`のうちmetrics stageのrunの値。run記録のない版（`unrecorded`・`legacy`）はnull。サーバーのチェックアウトはCRLFのため、開発PCで計算したhashとは違う値になる
-
-取込み前の検査（1つでも満たさないURLは書き込まない）:
-
-1. 前提: 現行の`midterm_plans`行があり、`code`・`adopted_version_id`・`source_hash`がJSONを作った時点と同じ。JSONの作成後に再抽出・取込みがあれば拒否する。同じJSONを2回取り込むこともできない
-2. schema・値・期末: 項目の型と許可値は正規化と違い補正せず誤りとして返す。ほかに`bound=range`の上限（下限より大きい）、`range`以外の`value_upper=null`、期末の形式`YYYY/MM`、期末と期間ラベルの矛盾（「2031年3月期」なのに`2030/03`など）を確かめる
-3. 正規化: `normalize_midterm_result()`を通す（明確な完全重複はここで自動統合される）。採用するのは正規化後の結果
-4. 重複: 正規化後に再検出した候補が、すべてJSON上で`resolution=distinct`になっている（同じ`candidate_id`）。`merged`と書いたのに行が残っている場合や、修正で新しく候補ができた場合は拒否する
-5. 変更: 正規化後の結果が現行と同じなら取り込まない（同じ内容の版を増やさない）。`distinct`の判断はDBに保存しないため、次回のレビュー用JSONにも同じ候補が出る
 
 #### ページ番号の取得
 

@@ -2,11 +2,13 @@
 
 SQLiteは読み取り専用で開き、何も書かない（元の抽出結果・既存versionは変えない）。
 自動では削除できない「同じ期の同じ目標かもしれない別ページの2行」を、人手・Chatが直すためのJSONを作る。
-直したJSONは scripts/import_midterm_verified_results.py で取り込む（取込み前に前提・schema・値・期末・重複を再検査）。
+レビュー・手修正は下流（PostgreSQL側）で行い、SQLiteへは書き戻さない。
 
 使い方:
-    python -m scripts.review_midterm_duplicate_candidates --db-path <SQLiteファイル> --out <review.json>
+    python -m scripts.review_midterm_duplicate_candidates --db-path <SQLiteファイル>
     python -m scripts.review_midterm_duplicate_candidates --db-path <SQLiteファイル> --out <review.json> --urls <URL>,<URL>
+
+--outを省略すると、SQLiteファイルと同じ場所の midterm_duplicate_review/review_<日時>.json に出す。
 
 検査の条件は midterm_plan_analysis/usecase/detect_duplicate_candidates.py、
 JSONの形は docs/midterm_plan_design.md「重複候補のレビュー」を参照。
@@ -32,12 +34,21 @@ def sqlite_readonly_uri(db_path: Path) -> str:
     return f"{uri}?mode=ro"
 
 
+DEFAULT_REVIEW_DIR = "midterm_duplicate_review"
+
+
+def default_out_path(db_path: Path, now: datetime.datetime) -> Path:
+    """SQLiteファイルと同じ場所の midterm_duplicate_review/review_<日時>.json（日時はローカル時刻）。"""
+    return db_path.parent / DEFAULT_REVIEW_DIR / f"review_{now.astimezone():%Y%m%d_%H%M%S}.json"
+
+
 def readonly_engine(db_path: Path):
     uri = sqlite_readonly_uri(db_path)
     return create_engine("sqlite://", creator=lambda: sqlite3.connect(uri, uri=True), future=True)
 
 
-def export_review(db_path: Path, out_path: Path, urls=None, clock=None) -> dict:
+def export_review(db_path: Path, out_path: Path | None = None, urls=None, clock=None) -> tuple[dict, Path]:
+    """レビュー用JSONを書き、(内容, 出力先)を返す。out_pathがNoneならdefault_out_path。"""
     if not db_path.is_file():
         raise FileNotFoundError(f"SQLiteファイルが見つかりません: {db_path}")
     engine = readonly_engine(db_path)
@@ -48,27 +59,28 @@ def export_review(db_path: Path, out_path: Path, urls=None, clock=None) -> dict:
     with sessionmaker(bind=engine, autoflush=False, future=True)() as session:
         document = build_review_document(build_review_entries(session, urls=urls), generated_at=now.isoformat())
     engine.dispose()
+    out_path = out_path or default_out_path(db_path, now)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
-    return document
+    return document, out_path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db-path", required=True, type=Path)
-    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--out", type=Path, help=f"省略時は<SQLiteと同じ場所>/{DEFAULT_REVIEW_DIR}/review_<日時>.json")
     parser.add_argument("--urls", default="", help="カンマ区切り。省略時はextraction_status=okの全文書")
     args = parser.parse_args()
 
     urls = [u.strip() for u in args.urls.split(",") if u.strip()]
-    document = export_review(args.db_path, args.out, urls=urls or None)
+    document, out_path = export_review(args.db_path, args.out, urls=urls or None)
     entries = document["entries"]
     for entry in entries:
         print(f"{entry['code']} {entry['disclosure_date']} 候補{len(entry['candidates'])}件 "
               f"version={entry['adopted_version_id']} {entry['url']}")
         for candidate in entry["candidates"]:
             print(f"  - {candidate['candidate_id']} {','.join(candidate['reasons'])}: {candidate['detail']}")
-    print(f"重複候補のある文書 {len(entries)}件 / 候補 {sum(len(e['candidates']) for e in entries)}件 → {args.out}")
+    print(f"重複候補のある文書 {len(entries)}件 / 候補 {sum(len(e['candidates']) for e in entries)}件 → {out_path}")
 
 
 if __name__ == "__main__":
