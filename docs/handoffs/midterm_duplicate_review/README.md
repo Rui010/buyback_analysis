@@ -16,7 +16,7 @@
 
 1. **手修正は修正用の仕組みで持つ**: `buyback_midterm_plans`はSQLiteからの同期コピーのため、直接直すと次の同期で上書きされうる（同期の挙動はbuyback_app側で要確認）。修正は別の仕組み（例: 修正用テーブル）で持ち、読むときに重ねる形を想定している
 2. **修正が古くなったら使わない**: 修正には、JSONの`adopted_version_id`・`source_hash`・`candidate_id`を一緒に控える。再抽出（RERUN）などで採用版が変わると、`adopted_version_id`が変わる。現在の値と一致しない修正は自動で使わず、最新データでレビューし直す
-3. **毎週のJSONを見る**: JSONは毎週土曜9:00に`\100.64.1.30\dq-c\sqlite_db\midterm_duplicate_revieweview_<日時>.json`へ1ファイルずつ出す予定（§3）。毎回全文書を見直すので、前回と同じ候補（同じ`candidate_id`）も毎週出る。判断済みかどうかは下流で`candidate_id`を使って管理してほしい
+3. **毎週のJSONを見る**: JSONは毎週土曜9:00に`\100.64.1.30\dq-c\sqlite_db\midterm_duplicate_review\review_<日時>.json`へ1ファイルずつ出す予定（§3）。毎回全文書を見直すので、前回と同じ候補（同じ`candidate_id`）も毎週出る。判断済みかどうかは下流で`candidate_id`を使って管理してほしい
 
 ## 3. JSONの出し方
 
