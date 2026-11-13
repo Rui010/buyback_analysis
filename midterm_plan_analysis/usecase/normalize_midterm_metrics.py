@@ -11,6 +11,9 @@ LLMの出力を引継ぎ仕様（ir-analytics-platform docs/plans/handoffs/buyba
 - metricsの重複: 指標名・値・単位・segment・連結区分・見直し前後・bound・上限・期末（null以外）が同じ行は、
   別ページの同じ目標として最初の1行だけ残す（5367で「2031年3月期」「2030年度」の2行になった対策）。
   期末か値がnullの行は同じ期・同じ値か判断できないので残す
+- 重複候補: 自動でまとめられないが同じ期の同じ目標かもしれない行の組（detect_duplicate_candidates.py）は
+  残したまま[REVIEW]ログを出す。レビュー用JSONは scripts/review_midterm_duplicate_candidates.py で出す
+  （ログは出力を変えないのでNORMALIZER_VERSIONに含めない）
 
 正規化の規則を変えたら NORMALIZER_VERSION を上げること（metrics stageのextractor_versionに含まれる）。
 """
@@ -20,6 +23,7 @@ import re
 import unicodedata
 
 from buyback_analysis.interface.logger import Logger
+from midterm_plan_analysis.usecase.detect_duplicate_candidates import find_possible_duplicate_targets
 
 logger = Logger()
 
@@ -230,6 +234,14 @@ def _warn_duplicates(metrics: list[dict], references: list[dict], log_context: s
             )
 
 
+def _log_possible_duplicates(metrics: list[dict], log_context: str) -> None:
+    for candidate in find_possible_duplicate_targets(metrics):
+        logger.info(
+            f"[REVIEW] {candidate['kind']}（自動では削除しません）: {candidate['detail']} "
+            f"reasons={','.join(candidate['reasons'])} {log_context}"
+        )
+
+
 def normalize_midterm_result(result, *, page_available: bool, log_context: str = ""):
     """metrics抽出のLLM結果（{"type", "data"}）を正規化した新しい辞書を返す。Noneはそのまま返す。"""
     if not isinstance(result, dict):
@@ -250,4 +262,5 @@ def normalize_midterm_result(result, *, page_available: bool, log_context: str =
         _normalize_reference(r, page_available=page_available) for r in _dicts(data.get("reference_values"))
     ]
     _warn_duplicates(data.get("metrics") or [], data["reference_values"], log_context)
+    _log_possible_duplicates(data.get("metrics") or [], log_context)
     return result

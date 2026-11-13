@@ -107,6 +107,59 @@ ir-analytics-platformの引継ぎ仕様（`C:\apps\ir-analytics-platform\docs\pl
 
 正規化後の結果をrunの出力として記録するため、metrics stageの`extractor_version`は`<LLM関数のEXTRACTOR_VERSION>+<NORMALIZER_VERSION>`とする。正規化の規則を変えたら`NORMALIZER_VERSION`を上げる。
 
+#### 重複候補のレビュー（2026-11-13追加、`midterm_duplicate_detector:1`）
+
+正規化で自動統合するのは期末（`target_fiscal_end`）まで同じ明確な重複だけ。同じ期の同じ目標を別ページから2回取った可能性はあるが断定できない行の組は、削除せず`possible_duplicate_target`（重複候補）として人手・Chatのレビューに回す。LLMは追加で呼ばない。LLM出力の揺れ自体は許容し、直すのはレビューで判断した行だけにする。
+
+候補の条件（`detect_duplicate_candidates.py`）。次をすべて満たす組:
+
+- 指標名・`value`（null以外）・単位・`segment`・`consolidation_label`・`revision_role`・`target_scope`・`bound`・`value_upper`が同じ
+- 両方の`page`が分かっていて、別のページにある（ページの目印がない旧text方式の行は対象外）
+- `target_period_label`か`target_fiscal_end`が違う
+- 期末・期間ラベルから読める期末の西暦年が重なるか、どちらかが読めない。「2031年3月期」は2031年、「2030年度」「FY2030」は3月決算なら2031年・12月決算なら2030年のどちらかとみなす。ROE 10%以上が「2029年3月期」と「2030年3月期」に並ぶ行のように年が重ならない組は、別の目標として候補にしない
+
+検知理由（`reasons`）は、期末の状態として`fiscal_end_missing_one_side`（片方だけnull、5367のケース）・`fiscal_end_missing_both`・`fiscal_end_differs`・`same_fiscal_end_not_merged`（正規化v2より前に保存され統合されていない行）のいずれか1つ。ラベルが違えば`period_label_differs`も付く。候補の識別子`candidate_id`は、組の2行の識別項目（上の属性・ラベル・期末・ページ）から作る。行の順序・metrics内の位置・`value_text`には依らない。
+
+流れ:
+
+1. パイプライン: `normalize_midterm_result()`は候補を削除せず残し、`[REVIEW] possible_duplicate_target`ログを出す（出力は変えないので`NORMALIZER_VERSION`は据え置き）
+2. 出力: `scripts/review_midterm_duplicate_candidates.py`がSQLiteを読み取り専用で開き、`extraction_status=ok`の採用行から候補のある文書だけをレビュー用JSONに出す。元の抽出結果・既存versionは変えない
+   ```powershell
+   .\.venv\Scripts\python.exe -m scripts.review_midterm_duplicate_candidates --db-path <SQLite> --out <review.json> [--urls <URL>,<URL>]
+   ```
+3. 修正: 各entryの`result.data.metrics`を直し、各候補の`resolution`を`merged`（1行にまとめた）か`distinct`（別の目標なので両方残す）にする
+4. 取込み: 既存の`scripts/import_midterm_verified_results.py`に同じJSONを渡す（`--apply`なしは検査結果の表示だけ）。`kind=midterm_duplicate_review`なら`import_reviewed_result.py`が検査し、通ったURLだけ`import_verified_result`→`adopt_result`で新しい版（`origin=unrecorded`）として採用する。キーワード行は引き継ぐ
+
+レビュー用JSONの形（`format_version=1`）:
+
+```json
+{
+  "kind": "midterm_duplicate_review", "format_version": 1, "detector_version": "midterm_duplicate_detector:1",
+  "generated_at": "...", "instructions": "...",
+  "entries": [{
+    "url": "...", "code": "5367", "disclosure_date": "2025-05-01", "extraction_status": "ok",
+    "adopted_version_id": "...", "version_origin": "run", "source_hash": "...",
+    "run_ids": ["..."], "prompt_name": "midterm_plan_native.md", "prompt_hash": "...",
+    "result": {"type": "MIDTERM_PLAN", "data": {"plan_name": "...", "metrics": [], "reference_values": []}},
+    "candidates": [{
+      "kind": "possible_duplicate_target", "candidate_id": "...", "metric_indexes": [0, 3], "pages": [1, 10],
+      "reasons": ["fiscal_end_missing_one_side", "period_label_differs"], "detail": "...",
+      "rows": [{"...候補行の全フィールド": "..."}, {}], "resolution": null
+    }]
+  }]
+}
+```
+
+- `adopted_version_id`は`result_adoptions`の最新の採用（採用記録がなければnull）。`source_hash`は`tdnet_source_documents`（台帳未登録ならnull）。`prompt_hash`は採用版の`run_ids`のうちmetrics stageのrunの値。run記録のない版（`unrecorded`・`legacy`）はnull。サーバーのチェックアウトはCRLFのため、開発PCで計算したhashとは違う値になる
+
+取込み前の検査（1つでも満たさないURLは書き込まない）:
+
+1. 前提: 現行の`midterm_plans`行があり、`code`・`adopted_version_id`・`source_hash`がJSONを作った時点と同じ。JSONの作成後に再抽出・取込みがあれば拒否する。同じJSONを2回取り込むこともできない
+2. schema・値・期末: 項目の型と許可値は正規化と違い補正せず誤りとして返す。ほかに`bound=range`の上限（下限より大きい）、`range`以外の`value_upper=null`、期末の形式`YYYY/MM`、期末と期間ラベルの矛盾（「2031年3月期」なのに`2030/03`など）を確かめる
+3. 正規化: `normalize_midterm_result()`を通す（明確な完全重複はここで自動統合される）。採用するのは正規化後の結果
+4. 重複: 正規化後に再検出した候補が、すべてJSON上で`resolution=distinct`になっている（同じ`candidate_id`）。`merged`と書いたのに行が残っている場合や、修正で新しく候補ができた場合は拒否する
+5. 変更: 正規化後の結果が現行と同じなら取り込まない（同じ内容の版を増やさない）。`distinct`の判断はDBに保存しないため、次回のレビュー用JSONにも同じ候補が出る
+
 #### ページ番号の取得
 
 - native方式: LLMにPDFのページ番号（1始まり）を返させる

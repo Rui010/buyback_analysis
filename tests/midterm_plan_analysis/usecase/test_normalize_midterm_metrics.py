@@ -314,3 +314,27 @@ class TestDuplicateMetrics:
 def test_normalizer_version_is_bumped_for_duplicate_merge():
     from midterm_plan_analysis.usecase.normalize_midterm_metrics import NORMALIZER_VERSION
     assert NORMALIZER_VERSION == "midterm_metrics_normalizer:2"
+
+
+class TestPossibleDuplicateLog:
+    """自動でまとめられない重複候補は残し、[REVIEW]ログだけ出す（レビュー用JSONは別スクリプトで出す）。"""
+
+    def _metrics(self):
+        first = _metric(value=13000, unit="百万円", target_period_label="2031年3月期（計画）",
+                        target_fiscal_end="2031/03", page=1)
+        second = _metric(value=13000, unit="百万円", target_period_label="2030年度", target_fiscal_end=None, page=10)
+        return [first, second]
+
+    def test_candidates_are_kept_and_logged(self):
+        with patch(f"{MODULE}.logger") as logger:
+            result = normalize_midterm_result(_result(metrics=self._metrics()), page_available=True,
+                                              log_context="5367 - title")
+        assert len(result["data"]["metrics"]) == 2
+        messages = [c[0][0] for c in logger.info.call_args_list if "[REVIEW]" in c[0][0]]
+        assert len(messages) == 1
+        assert "possible_duplicate_target" in messages[0] and "5367 - title" in messages[0]
+
+    def test_no_log_without_pages(self):
+        with patch(f"{MODULE}.logger") as logger:
+            normalize_midterm_result(_result(metrics=self._metrics()), page_available=False)
+        assert not [c for c in logger.info.call_args_list if "[REVIEW]" in c[0][0]]
