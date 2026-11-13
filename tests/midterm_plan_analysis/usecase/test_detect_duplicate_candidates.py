@@ -136,6 +136,18 @@ class TestDetection:
     def test_none_metrics(self):
         assert find_possible_duplicate_targets(None) == []
 
+    def test_list_value_from_old_rows_does_not_crash(self):
+        """正規化前の古い行（3238）はvalueが[30, 35]のようなlistで残っている。"""
+        metrics = [_metric(value=[30, 35]), _p10(value=[30, 35]), _p10(value=[6, 7])]
+        candidates = find_possible_duplicate_targets(metrics)
+        assert [c["metric_indexes"] for c in candidates] == [[0, 1]]
+
+    def test_dict_value_does_not_crash(self):
+        assert len(find_possible_duplicate_targets([_metric(value={"min": 30}), _p10(value={"min": 30})])) == 1
+
+    def test_int_and_float_value_still_group_together(self):
+        assert len(find_possible_duplicate_targets([_metric(value=13000), _p10(value=13000.0)])) == 1
+
 
 class TestPossibleFiscalEndYears:
     @pytest.mark.parametrize("item,expected", [

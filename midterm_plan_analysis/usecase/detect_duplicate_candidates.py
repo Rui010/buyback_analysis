@@ -62,9 +62,16 @@ def _is_page(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _key_part(field: str, value):
+    # valueは13000と13000.0を同じ組にするため数値のまま使う。
+    # 正規化前の古い行はvalueが[30, 35]のようなlistで残っているので、hashできない値だけJSON文字列にする。
+    if field == "value" and not isinstance(value, (list, dict)):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
 def _group_key(item: dict):
-    return tuple(json.dumps(item.get(field), ensure_ascii=False) if field != "value" else item.get(field)
-                 for field in GROUP_FIELDS)
+    return tuple(_key_part(field, item.get(field)) for field in GROUP_FIELDS)
 
 
 def _reasons(a: dict, b: dict) -> list[str]:
