@@ -1,0 +1,84 @@
+fixture_version = "1"
+fixture_status = "verified"
+code = "6574"
+company_name = "株式会社コンヴァノ"
+purpose = "同日開示の相対取得と市場買付けを、全体上限が共通でも別案件として保持する"
+
+[[plans]]
+plan_key = "6574:2026-09-30:relative_acquisition"
+decision_body = "extraordinary_shareholders_meeting"
+method = "relative_acquisition"
+
+[[plans]]
+plan_key = "6574:2026-08-24:market_purchase"
+decision_body = "board_of_directors"
+method = "market_purchase"
+
+[[documents]]
+role = "relative_acquisition_origin"
+url = "https://www.release.tdnet.info/inbs/140120260821524658.pdf"
+disclosure_date = "2026-08-24"
+title = "特定の株主からの自己株式の取得に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "52da068e2290bb3c0b6b82cbf503ca4fa923ac208bea335a635e3aabf2c3771c"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+expected_plan_key = "6574:2026-09-30:relative_acquisition"
+
+[documents.evidence]
+pages = [1, 2, 3]
+decision_date = "2026-09-30"
+decision_body = "extraordinary_shareholders_meeting"
+conditional_on_approval = true
+counterparty = "株式会社ディメンショナル"
+buyback_shares = 37289600
+price_per_share_yen_upper = 100
+buyback_amount_yen = 3728960000
+method = "relative_acquisition"
+
+[[documents]]
+role = "combined_framework_and_market_origin"
+url = "https://www.release.tdnet.info/inbs/140120260821524659.pdf"
+disclosure_date = "2026-08-24"
+title = "自己株式の取得に係る事項の決定に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "89d20e2eb262f8f6ee31221a407b36f62ffb200fbe4b09a000e731d2068875ac"
+expected_event_types = ["new_plan", "new_plan"]
+
+[[documents.expected_links]]
+event_discriminator = "relative_acquisition"
+status = "LINKED"
+plan_key = "6574:2026-09-30:relative_acquisition"
+
+[[documents.expected_links]]
+event_discriminator = "market_purchase"
+status = "LINKED"
+plan_key = "6574:2026-08-24:market_purchase"
+
+[documents.evidence]
+pages = [2, 3]
+combined_buyback_shares = 45000000
+combined_buyback_amount_yen = 4500000000
+relative_buyback_shares = 37289600
+relative_buyback_amount_yen = 3728960000
+relative_decision_date = "2026-09-30"
+relative_decision_body = "extraordinary_shareholders_meeting"
+market_buyback_shares = 7710400
+market_buyback_amount_yen = 771040000
+market_decision_date = "2026-08-24"
+market_decision_body = "board_of_directors"
+market_start_date = "2026-10-01"
+market_end_date = "2027-03-31"
+
+[expected_relationship]
+plan_count = 2
+combined_limit_is_not_a_third_plan = true
+same_disclosure_date_does_not_merge_plans = true
+same_overall_funding_does_not_merge_plans = true
+decision_body_and_method_distinguish_plans = true
+
+notes = [
+  "The combined 4.5 billion yen ceiling is the sum of the relative acquisition and market purchase ceilings.",
+  "The two acquisitions use different decision bodies, legal bases, counterparties, periods, and methods.",
+  "The combined-framework document repeats the relative acquisition and independently resolves the market purchase."
+]

@@ -1,0 +1,51 @@
+fixture_version = "1"
+code = "2146"
+company_name = "ＵＴグループ株式会社"
+purpose = "社員向け報酬制度文書を独立案件にせず、同日取得決議の目的説明としてリンクする"
+expected_plan_key = "2146:2026-11-13"
+
+[[documents]]
+role = "equity_compensation_context"
+url = "https://www.release.tdnet.info/inbs/140120261113579604.pdf"
+disclosure_date = "2026-11-13"
+title = "社員向け株式報酬制度に係る自己株式の取得及び処分方針の変更に関するお知らせ"
+source_status = "verified_download"
+source_sha256 = "685825e85da04db82ebc1cda674a78681210b467c2a6133d2abae3f820ae0f9a"
+expected_event_types = ["equity_compensation"]
+expected_link_status = "LINKED"
+must_not_create_plan = true
+
+[documents.evidence]
+pages = [1, 2]
+resolution_date = "2026-11-13"
+purpose = "stock_option_dilution_mitigation"
+buyback_amount_yen = 6000000000
+start_date = "2026-11-16"
+end_date = "2027-03-31"
+
+[[documents]]
+role = "origin"
+url = "https://www.release.tdnet.info/inbs/140120261113579610.pdf"
+disclosure_date = "2026-11-13"
+title = "自己株式取得に係る事項の決定に関するお知らせ"
+source_status = "verified_download"
+source_sha256 = "5155f7a34c0593057af2ded7617cf4c9ced891644b00088049e37d8123705923"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1]
+resolution_date = "2026-11-13"
+purpose = "stock_option_dilution_mitigation"
+buyback_shares = 43000000
+buyback_amount_yen = 6000000000
+start_date = "2026-11-16"
+end_date = "2027-03-31"
+method = "market_purchase"
+referenced_document_url = "https://www.release.tdnet.info/inbs/140120261113579604.pdf"
+
+[expected_relationship]
+plan_count = 1
+all_linked_events_share_plan = true
+equity_compensation_document_creates_plan = false
+origin_document_creates_plan = true

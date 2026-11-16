@@ -1,0 +1,92 @@
+fixture_version = "1"
+fixture_status = "verified"
+code = "3038"
+company_name = "株式会社神戸物産"
+purpose = "決議、ToSTNeT-3実施通知、補足資料2件を一案件の別イベントとして扱う"
+expected_plan_key = "3038:2026-09-29"
+
+[[documents]]
+role = "origin"
+url = "https://www.release.tdnet.info/inbs/140120260926540625.pdf"
+disclosure_date = "2026-09-29"
+title = "自己株式取得に係る事項の決定に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "852bf9fc45f30fa7c1208300de4f7394cd8442378a40c92db2733c66759c7dce"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1, 2]
+resolution_date = "2026-09-29"
+buyback_shares = 16000000
+buyback_amount_yen = 40000000000
+start_date = "2026-09-30"
+end_date = "2027-04-30"
+
+[[documents]]
+role = "execution_notice"
+url = "https://www.release.tdnet.info/inbs/140120260928541306.pdf"
+disclosure_date = "2026-09-29"
+title = "自己株式立会外買付取引（ToSTNeT-３）による自己株式の買付けに関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "829f75ced71ecc948b787ba12756a8010f847715351271ec52d14e5adc4a8f66"
+expected_event_types = ["execution_notice"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1, 2]
+resolution_date = "2026-09-29"
+buyback_shares = 13472500
+buyback_amount_yen = 39999852500
+start_date = "2026-09-30"
+end_date = "2026-09-30"
+
+[[documents]]
+role = "supplement"
+url = "https://www.release.tdnet.info/inbs/140120260928541315.pdf"
+disclosure_date = "2026-09-29"
+title = "ユーロ円CB発行および自己株式取得に関する補足説明資料"
+source_status = "verified_unc"
+source_sha256 = "801d31f2ad63749522bb1d64eac088fb1cbe16ec82b165169f71a74817ae3de9"
+expected_event_types = ["supplement"]
+expected_link_status = "LINKED"
+must_not_create_plan = true
+
+[documents.evidence]
+pages = [2, 3, 9]
+resolution_date = "2026-09-29"
+buyback_shares = 16000000
+buyback_amount_yen = 40000000000
+start_date = "2026-09-30"
+end_date = "2027-04-30"
+
+[[documents]]
+role = "supplement"
+url = "https://www.release.tdnet.info/inbs/140120260929542480.pdf"
+disclosure_date = "2026-09-29"
+title = "ユーロ円CB発行および自己株式取得に関する補足説明資料（条件確定版）"
+source_status = "verified_unc"
+source_sha256 = "af76e7bff749d8234ad44697a73b6249ca11c87cf629d46e861179de8f84f6af"
+expected_event_types = ["supplement"]
+expected_link_status = "LINKED"
+must_not_create_plan = true
+
+[documents.evidence]
+pages = [2, 3, 9]
+resolution_date = "2026-09-29"
+buyback_shares = 16000000
+buyback_amount_yen = 40000000000
+start_date = "2026-09-30"
+end_date = "2027-04-30"
+
+[expected_relationship]
+plan_count = 1
+supplements_create_plan = false
+legacy_rows_must_not_be_used_as_expected_output = true
+
+notes = [
+  "All four public TDnet URLs returned HTTP 404 on 2026-11-16, but source bytes were available in the UNC archive.",
+  "Hashes were calculated from the UNC archive under the 20260929 directory.",
+  "All four legacy rows are announcements, which is the duplication this fixture is intended to prevent.",
+  "Expected output is based on the archived source, not the legacy announcement rows."
+]

@@ -1,0 +1,63 @@
+fixture_version = "1"
+fixture_status = "verified"
+code = "5449"
+company_name = "大阪製鐵株式会社"
+purpose = "発行主体を優先し、親会社の応募文書を子会社の独立買付案件として重複登録しない"
+expected_plan_key = "5449:2026-11-04"
+
+[[documents]]
+role = "parent_application_notice"
+issuer_code = "5401"
+issuer_name = "日本製鉄株式会社"
+url = "https://www.release.tdnet.info/inbs/140120261027556940.pdf"
+disclosure_date = "2026-11-04"
+title = "当社子会社による自己株式の公開買付け及び当社による応募に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "8f2ee3d3b5bd818a996e27e24c69da66b438b9a874ac294cacfb6382a767a361"
+expected_event_types = ["other_party_transaction"]
+must_not_create_plan = true
+must_not_link_to_code = "5449"
+
+[documents.evidence]
+pages = [1]
+acquirer_code = "5449"
+acquirer_name = "大阪製鐵株式会社"
+transaction_role = "parent_shareholder_application"
+applicant_code = "5401"
+planned_offer_shares = 2800000
+
+[[documents]]
+role = "origin"
+issuer_code = "5449"
+issuer_name = "大阪製鐵株式会社"
+url = "https://www.release.tdnet.info/inbs/140120261104563628.pdf"
+disclosure_date = "2026-11-04"
+title = "自己株式の取得及び自己株式の公開買付けに関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "7a5b7f817d01ea35b6ebe17ea4466f3abdc806ffea2e34362f7703bfcccd4577"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [4]
+resolution_date = "2026-11-04"
+buyback_shares = 2800100
+buyback_amount_yen = 5880210000
+acquisition_start_date = "2026-11-05"
+acquisition_end_date = "2027-01-31"
+tender_offer_start_date = "2026-11-05"
+tender_offer_end_date = "2026-12-03"
+method = "tender_offer"
+offer_price_yen = 2100
+
+[expected_relationship]
+plan_count_for_code_5449 = 1
+parent_document_creates_plan_for_5449 = false
+parent_document_is_excluded_from_5449_projection = true
+issuer_document_creates_plan_for_5449 = true
+
+notes = [
+  "The parent document includes the subsidiary release as an attachment, but its TDnet issuer is code 5401.",
+  "Issuer metadata must take precedence over company codes found inside attachments.",
+  "The legacy pipeline incorrectly stored both URLs as code 5449 announcements with identical values."
+]

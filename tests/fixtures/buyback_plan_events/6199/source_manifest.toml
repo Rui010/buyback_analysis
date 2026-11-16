@@ -1,0 +1,77 @@
+fixture_version = "1"
+fixture_status = "verified"
+code = "6199"
+company_name = "株式会社セラク"
+purpose = "取得枠拡大とToSTNeT-3実施通知を2026-07-27決議の同一案件へリンクする"
+expected_plan_key = "6199:2026-07-27"
+
+[[documents]]
+role = "origin"
+url = "https://www.release.tdnet.info/inbs/140120260727599866.pdf"
+disclosure_date = "2026-07-27"
+title = "自己株式取得に係る事項の決定に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "4dc41089cc3d38a7821a335026fe2f7659e05151b3e757a85e68b212e45f10ab"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1]
+resolution_date = "2026-07-27"
+buyback_shares = 500000
+buyback_amount_yen = 500000000
+start_date = "2026-07-28"
+end_date = "2027-06-30"
+methods = ["ToSTNeT-3", "market_purchase"]
+
+[[documents]]
+role = "amendment"
+url = "https://www.release.tdnet.info/inbs/140120261029558892.pdf"
+disclosure_date = "2026-10-29"
+title = "自己株式取得に係る事項の一部変更（取得枠の拡大）に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "dfacea3dee81615d05dd34ee041f7ef1cc166616e56149472af987a33f211bcb"
+expected_event_types = ["amendment"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1, 2, 3]
+referenced_resolution_date = "2026-07-27"
+previous_buyback_shares = 500000
+changed_buyback_shares = 1000000
+previous_buyback_amount_yen = 500000000
+changed_buyback_amount_yen = 1000000000
+start_date = "2026-07-28"
+end_date = "2027-06-30"
+methods = ["ToSTNeT-3", "market_purchase"]
+cumulative_shares_at_2026_09_30 = 226700
+cumulative_amount_yen_at_2026_09_30 = 299789600
+
+[[documents]]
+role = "execution_notice"
+url = "https://www.release.tdnet.info/inbs/140120261029559847.pdf"
+disclosure_date = "2026-10-29"
+title = "自己株式立会外買付取引（ToSTNeT-3）による自己株式の買付けに関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "92c72b76c32e5348f575bab39d683748ecf302c4562024999c007e16a322c8be"
+expected_event_types = ["execution_notice"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1]
+referenced_resolution_date = "2026-10-29"
+original_resolution_date = "2026-07-27"
+planned_buyback_shares = 172100
+planned_buyback_amount_yen = 249889200
+execution_date = "2026-10-30"
+method = "ToSTNeT-3"
+current_plan_buyback_shares = 1000000
+current_plan_buyback_amount_yen = 1000000000
+
+[expected_relationship]
+plan_count = 1
+all_linked_events_share_plan = true
+original_buyback_shares = 500000
+current_buyback_shares = 1000000
+original_buyback_amount_yen = 500000000
+current_buyback_amount_yen = 1000000000

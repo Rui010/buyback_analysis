@@ -1,0 +1,107 @@
+fixture_version = "1"
+fixture_status = "verified"
+code = "3350"
+company_name = "株式会社メタプラネット"
+purpose = "一文書から旧案件completionと新案件new_planを分離し、後続文書を新案件へリンクする"
+
+[[plans]]
+plan_key = "3350:2025-10-28"
+origin_url = "https://www.release.tdnet.info/inbs/140120251028579820.pdf"
+
+[[plans]]
+plan_key = "3350:2026-10-13"
+origin_url = "https://www.release.tdnet.info/inbs/140120261013549598.pdf"
+
+[[documents]]
+role = "old_plan_origin"
+url = "https://www.release.tdnet.info/inbs/140120251028579820.pdf"
+disclosure_date = "2025-10-28"
+title = "自己株式の取得枠設定およびクレジット・ファシリティ契約締結に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "04893629615e5484391a5c68212d717e41e7d0e35d2a33b72833dd51fded3b74"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+expected_plan_key = "3350:2025-10-28"
+
+[documents.evidence]
+pages = [1]
+resolution_date = "2025-10-28"
+buyback_shares = 150000000
+buyback_amount_yen = 75000000000
+start_date = "2025-10-29"
+end_date = "2026-10-28"
+method = "discretionary_market_purchase"
+
+[[documents]]
+role = "old_completion_and_new_origin"
+url = "https://www.release.tdnet.info/inbs/140120261013549598.pdf"
+disclosure_date = "2026-10-13"
+title = "自己株式の取得状況及び取得終了並びに自己株式の取得枠設定に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "e97248a2bfe0cd36f73dd43e424de6641762e2360c4afb13926de2e21a082d83"
+expected_event_types = ["completion", "new_plan"]
+
+[[documents.expected_links]]
+event_type = "completion"
+status = "LINKED"
+plan_key = "3350:2025-10-28"
+
+[[documents.expected_links]]
+event_type = "new_plan"
+status = "LINKED"
+plan_key = "3350:2026-10-13"
+
+[documents.evidence]
+pages = [1, 2, 3]
+old_resolution_date = "2025-10-28"
+old_cumulative_shares = 0
+old_cumulative_amount_yen = 0
+new_resolution_date = "2026-10-13"
+new_buyback_shares = 200000000
+new_buyback_amount_yen = 60000000000
+new_start_date = "2026-10-14"
+new_end_date = "2027-10-13"
+
+[[documents]]
+role = "execution_notice"
+url = "https://www.release.tdnet.info/inbs/140120261013549603.pdf"
+disclosure_date = "2026-10-13"
+title = "自己株式立会外買付取引（ToSTNeT-３）による自己株式の買付けに関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "4d23670364a88a5db29d2a04a65751d8d3bd13c2e7ed14a2b27ec55cfbab3cd6"
+expected_event_types = ["execution_notice"]
+expected_link_status = "LINKED"
+expected_plan_key = "3350:2026-10-13"
+
+[documents.evidence]
+pages = [1]
+referenced_resolution_date = "2026-10-13"
+planned_buyback_shares = 96934800
+planned_buyback_amount_yen = 25299982800
+method = "ToSTNeT-3"
+
+[[documents]]
+role = "supplement"
+url = "https://www.release.tdnet.info/inbs/140120261013550032.pdf"
+disclosure_date = "2026-10-13"
+title = "ユーロ円CB発行及び自己株式取得に関する補足説明資料"
+source_status = "verified_unc"
+source_sha256 = "151cef9a1efce08f52583f4266490046b6608fd22744a387e146828a30b61bd6"
+expected_event_types = ["supplement"]
+expected_link_status = "LINKED"
+expected_plan_key = "3350:2026-10-13"
+must_not_create_plan = true
+
+[documents.evidence]
+pages = [2, 3]
+referenced_resolution_date = "2026-10-13"
+buyback_shares = 200000000
+buyback_amount_yen = 60000000000
+start_date = "2026-10-14"
+end_date = "2027-10-13"
+
+[expected_relationship]
+plan_count = 2
+combined_document_event_count = 2
+combined_document_events_use_different_plans = true
+execution_and_supplement_use_new_plan = true

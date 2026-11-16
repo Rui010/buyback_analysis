@@ -88,7 +88,11 @@ buyback_analysis/
 │   ├── progress.py      # buyback_progress テーブル
 │   ├── completion.py    # buyback_completion テーブル
 │   ├── correction.py    # corrections テーブル
-│   └── is_checked.py    # is_checked テーブル（URL処理済み管理）
+│   ├── is_checked.py    # is_checked テーブル（URL処理済み管理）
+│   ├── buyback_event.py               # buyback_events（採用中の抽出イベント）
+│   ├── buyback_event_link_decision.py # buyback_event_link_decisions（紐づけ判定履歴）
+│   ├── buyback_plan.py                # buyback_plans（自己株買い案件）
+│   └── buyback_plan_projection.py     # buyback_plan_projections（案件別集計キャッシュ）
 ├── prompts/             # Gemini APIへのプロンプトテンプレート（Markdown）
 │   ├── ir_type.md       # 文書種別判定用
 │   ├── announcement.md  # 発表データ抽出用
@@ -103,8 +107,24 @@ buyback_analysis/
     ├── post_url.py      # is_checkedテーブルへのURL登録
     ├── get_tdnet_buyback_data.py  # PostgreSQLから「自己株」含みタイトルを取得
     ├── get_pdf_data.py  # PDFダウンロード・テキスト抽出
-    └── data_exists.py   # 重複チェック
+    ├── data_exists.py   # 重複チェック
+    ├── event_schemas.py                 # Phase 1の複数イベントresponseSchema
+    ├── event_identity.py                # event_uid引継ぎ・内容fingerprint
+    ├── adopt_buyback_events.py          # 採用イベント保存・安全失効・連鎖失効
+    ├── link_new_plan.py                 # new_planの確定条件・案件冪等生成
+    ├── link_existing_plan_events.py     # 既存案件向けイベントの候補判定
+    ├── link_normalization.py            # 日付・取得方法の正規化
+    ├── persist_existing_plan_decision.py # 通常判定の冪等保存
+    ├── build_plan_link_candidates.py    # 現行LINKEDイベントから案件候補を導出
+    ├── relink_buyback_events.py         # 未確定イベントの1パス自動再判定
+    └── rebuild_plan_projection.py       # 案件別projectionの再計算
 ```
+
+自己株買い案件紐づけPhase 1の設計は`docs/buyback_plan_event_linking_design.md`、確定済み紐づけの
+自動訂正（Phase 2）は`docs/buyback_plan_link_correction_design.md`、下流提供契約は
+`docs/handoffs/buyback-plan-event-linking-contract.md`を参照。Phase 1の内部モデル・判定・集計は
+実装済みだが、原文引用の機械確認、複数イベントLLM抽出とプロンプト、既存パイプラインへの配線、
+本番migrationは未実装。
 
 ### midterm_plan_analysis（中期経営計画分析）
 

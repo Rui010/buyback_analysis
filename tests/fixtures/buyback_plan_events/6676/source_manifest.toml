@@ -1,0 +1,68 @@
+fixture_version = "1"
+code = "6676"
+company_name = "株式会社バッファロー"
+purpose = "取得枠変更と複数の買付方法を2026-05-14決議の同一案件へリンクする"
+expected_plan_key = "6676:2026-05-14"
+
+[[documents]]
+role = "origin"
+url = "https://www.release.tdnet.info/inbs/140120260513528588.pdf"
+disclosure_date = "2026-05-14"
+title = "自己株式取得に係る事項の決定に関するお知らせ"
+source_status = "verified_unc"
+source_sha256 = "1f6784f0580f3aa637c34722660970848417e7b84f5c6d66fcff18f274c875cb"
+expected_event_types = ["new_plan"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1]
+resolution_date = "2026-05-14"
+buyback_shares = 4000000
+buyback_amount_yen = 11200000000
+start_date = "2026-05-15"
+end_date = "2027-04-30"
+
+[[documents]]
+role = "execution_and_amendment"
+url = "https://www.release.tdnet.info/inbs/140120261109570128.pdf"
+disclosure_date = "2026-11-13"
+title = "自己株式立会外買付取引（ToSTNeT-３）、自己株式の公開買付け及び市場買付けに関するお知らせ"
+source_status = "verified_download"
+source_sha256 = "d7f41fdf6d4a74aaf94dc17fbdd96ea0b482ec76952de351bf29064bdf1c984f"
+expected_event_types = ["amendment", "execution_notice"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1, 8]
+referenced_resolution_date = "2026-05-14"
+changed_buyback_amount_yen = 14000000000
+methods = ["ToSTNeT-3", "tender_offer", "market_purchase"]
+
+[[documents]]
+role = "amendment"
+url = "https://www.release.tdnet.info/inbs/140120261109570130.pdf"
+disclosure_date = "2026-11-13"
+title = "自己株式取得に係る事項の一部変更（取得枠の拡大）に関するお知らせ"
+source_status = "verified_download"
+source_sha256 = "5657352fad021927ef87560acc0e8110a3c2a9b04e130271fbea70849a3ea60e"
+expected_event_types = ["amendment"]
+expected_link_status = "LINKED"
+
+[documents.evidence]
+pages = [1]
+referenced_resolution_date = "2026-05-14"
+previous_buyback_amount_yen = 11200000000
+changed_buyback_amount_yen = 14000000000
+start_date = "2026-05-15"
+end_date = "2027-04-30"
+
+[expected_relationship]
+plan_count = 1
+all_linked_events_share_plan = true
+current_buyback_amount_yen = 14000000000
+original_buyback_amount_yen = 11200000000
+
+notes = [
+  "The public origin URL returned HTTP 404 on 2026-11-16, but source bytes were available in the UNC archive.",
+  "The origin hash was calculated from the UNC archive under the 20260514 directory."
+]

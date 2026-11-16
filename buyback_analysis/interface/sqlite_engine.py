@@ -3,6 +3,15 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from buyback_analysis.models.base import Base
+# init_db()単独でもPhase 1の新規テーブルをmetadataへ登録する。
+from buyback_analysis.models.buyback_event import BuybackEvent  # noqa: F401
+from buyback_analysis.models.buyback_event_link_decision import (  # noqa: F401
+    BuybackEventLinkDecision,
+)
+from buyback_analysis.models.buyback_plan import BuybackPlan  # noqa: F401
+from buyback_analysis.models.buyback_plan_projection import (  # noqa: F401
+    BuybackPlanProjection,
+)
 
 
 load_dotenv()
