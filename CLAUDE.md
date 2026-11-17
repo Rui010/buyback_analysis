@@ -58,6 +58,7 @@ python -m midterm_plan_analysis.backfill_keywords
 | `SLACK_CHANNEL` | 通知先チャンネル（例: `#alerts`） |
 | `SLACK_MENTION` | エラー時のメンション先（例: `@username`、省略可） |
 | `BUYBACK_USE_NATIVE_PDF` | `true` でbuyback_analysisの抽出ステップをネイティブPDF方式に切り替え（省略時は`false`） |
+| `BUYBACK_SINGLE_LLM_ENABLED` | `true` で通常文書を複数イベント抽出1回に集約し、従来テーブルはイベントから決定論的に互換生成する。訂正文書だけはPhase 2まで従来LLM経路を使う（`TDNET_PROVENANCE_ENABLED=true`必須） |
 | `MIDTERM_USE_NATIVE_PDF` | `true` でmidterm_plan_analysisをネイティブPDF方式に切り替え（省略時は`false`） |
 | `MIDTERM_EXTRACT_KEYWORDS` | `true` でmidterm_plan_analysisに戦略テーマ・重点施策のキーワード抽出（別LLMコール）を追加する（省略時は`false`） |
 | `MIDTERM_BACKFILL_KEYWORDS_LIMIT` | `backfill_keywords.py`実行時に1回で処理するmidterm_plans行数の上限（省略時は`50`） |

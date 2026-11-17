@@ -28,6 +28,10 @@ from buyback_analysis.usecase.process_buyback_event_document import (
 from buyback_analysis.usecase.save_buyback_event_result import (
     has_buyback_event_result,
 )
+from buyback_analysis.usecase.save_legacy_buyback_compatibility import (
+    requires_legacy_llm,
+    save_legacy_buyback_compatibility,
+)
 from tdnet_provenance.usecase.adopt_result import require_provenance_for_rerun
 from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
 from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
@@ -43,6 +47,7 @@ SYSTEM_END_DATE = os.getenv("SYSTEM_END_DATE")    # YYYY-MM-DD形式
 
 USE_NATIVE_PDF = os.getenv("BUYBACK_USE_NATIVE_PDF", "false").lower() == "true"
 RERUN_URLS = [u.strip() for u in os.getenv("RERUN_URLS", "").split(",") if u.strip()]
+SINGLE_LLM_ENABLED = os.getenv("BUYBACK_SINGLE_LLM_ENABLED", "false").lower() == "true"
 
 REQUIRED_FIELDS = {
     DetectType.BUYBACK_ANNOUNCEMENT: ["buyback_shares", "buyback_amount_yen"],
@@ -82,6 +87,10 @@ def main():
     try:
         init_db()  # DBの初期化
         recorder = ProvenanceRecorder.from_env(session)
+        if SINGLE_LLM_ENABLED and recorder is None:
+            raise RuntimeError(
+                "BUYBACK_SINGLE_LLM_ENABLED=trueにはTDNET_PROVENANCE_ENABLED=trueが必要です"
+            )
         require_provenance_for_rerun(recorder, RERUN_URLS)
         writer = BuybackResultWriter(session, rerun=bool(RERUN_URLS))
         postgresql_engine = get_database_engine()
@@ -119,8 +128,10 @@ def main():
             event_result_exists = (
                 recorder is not None and has_buyback_event_result(session, url)
             )
-            needs_event_processing = recorder is not None and (
-                bool(RERUN_URLS) or not event_result_exists
+            needs_event_processing = (
+                recorder is not None
+                and not (SINGLE_LLM_ENABLED and requires_legacy_llm(row["title"]))
+                and (bool(RERUN_URLS) or not event_result_exists)
             )
 
             # saved/skipped は PDF取得前にスキップ（不要なダウンロードを回避）
@@ -193,6 +204,29 @@ def main():
                 else:
                     logger.error(f"[BuybackEvents] 保存・紐づけ失敗: {code} - {url}")
                     failed_event += 1
+
+                if (
+                    SINGLE_LLM_ENABLED
+                    and event_saved
+                    and not requires_legacy_llm(row["title"])
+                ):
+                    compatibility_saved = save_legacy_buyback_compatibility(
+                        session,
+                        code=code,
+                        url=url,
+                        disclosure_date=row["date"].strftime("%Y-%m-%d"),
+                        company_name=row["name"],
+                        rerun=bool(RERUN_URLS),
+                    )
+                    if compatibility_saved:
+                        logger.info(
+                            f"[LegacyCompatibility] LLMなしで互換保存完了: {code} - {url}"
+                        )
+                        successful_saves += 1
+                        continue
+                    logger.error(
+                        f"[LegacyCompatibility] 互換保存失敗、従来LLMへフォールバック: {code} - {url}"
+                    )
 
             if not RERUN_URLS and data_exists_in_ir_tables(session, url):
                 logger.info(f"従来形式は処理済みのためスキップ: {code} - {row['date']}")
