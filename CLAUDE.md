@@ -131,7 +131,9 @@ buyback_analysis/
 `docs/handoffs/buyback-plan-event-linking-contract.md`を参照。Phase 1の内部モデル・判定・集計は
 実装済み。`TDNET_PROVENANCE_ENABLED=true`のとき、既存パイプラインは原典照合済み本文から
 複数イベント抽出・引用確認・採用・自動紐づけを実行し、従来形式の保存も並行して維持する。
-本番migration用スクリプトは実装済みだが未適用。
+`BUYBACK_SINGLE_LLM_ENABLED=true`では通常文書のLLM呼び出しをevents 1回に集約し、従来テーブルは
+イベントから互換生成する。本番は2026-11-17に`scripts/migrate_buyback_plan_event_tables.py`を適用し、
+同日からこのフラグを有効化している。新4テーブルはPostgreSQLへの同期対象外（下流公開は未着手）。
 
 ### midterm_plan_analysis（中期経営計画分析）
 
