@@ -43,7 +43,7 @@ def test_stage_records_events_contract_and_validates_quotes(mock_extract, mock_r
         "name": "Example",
     }
     assert kwargs["generation_config"]["temperature"] == 0
-    assert kwargs["extractor_version"] == "buyback_events_text:3"
+    assert kwargs["extractor_version"] == "buyback_events_text:4"
 
 
 @patch("buyback_analysis.usecase.run_buyback_event_stage.run_llm_stage")

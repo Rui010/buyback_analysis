@@ -11,11 +11,15 @@
 規則:
 - 文書全体を1種類に分類せず、本文に含まれるイベントをevents配列へ個別に出す。
 - 旧案件の完了と新しい取得枠の設定が同居する場合は、completionとnew_planを別イベントにする。
+- 同じ旧案件について取得状況と取得終了を同時に報告している場合はcompletionだけを出し、同じ数値・期間からprogressを重複して作らない。
+- 本文が「別文書で開示予定」「別途お知らせする」と述べるだけの買付けは、この文書自身のイベントではないためexecution_noticeを作らない。参照先の題名や予定額だけからイベントを増やさない。
 - source_quoteには判定根拠となる本文の原文を改変せず10文字以上で引用する。本文にない文を作らない。
 - resolution_dateはイベントの根拠となる取得決議日とする。amendmentでは変更元の取得決議日を入れ、変更決議日はevent_dateへ入れる。
 - referenced_document_dateは本文が参照する別文書の開示日であり、決議日を入れない。
 - 不明な値は推測せずnullにする。confidenceは出力しない。
 - company_own_transaction、independent_resolution、uses_existing_buyback_plan、related_to_buyback_planは、本文で確認できる場合だけtrue又はfalseとし、不明ならnullにする。
+- 開示会社自身が自己株式を取得すると明記しているnew_planはcompany_own_transaction=trueにする。
+- 取締役会等がその文書で新しい取得枠を決議したと明記しているnew_planはindependent_resolution=trueにする。過去決議の再掲や補足だけならtrueにしない。
 - correction文書はPhase 1では抽出対象外なのでeventsを空配列にする。
 
 値の形式:
@@ -24,6 +28,7 @@
 - 金額は円単位の整数にする。「億円」は100,000,000倍、「百万円」は1,000,000倍、「千円」は1,000倍する。
 - 例: 5,000億円は500000000000、60,000百万円は60000000000、200万株は2000000。
 - 比率や1株当たり価格を、取得株数・取得総額へ入れない。
+- 取得株数又は取得総額が本文で0と明示されている場合、明示された0はnullにせず0として対応するcompletion又はprogressの項目へ入れる。
 
 event_typeの定義:
 - new_plan: 取締役会等が新しい自己株式取得枠を決議したイベント。既存決議の再掲や補足資料は含めない。
