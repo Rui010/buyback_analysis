@@ -44,6 +44,11 @@ Phase 1は、複数イベント抽出、冪等保存、`new_plan`による案件
 Phase 1の自己株買い抽出は`TDNET_PROVENANCE_ENABLED=true`を前提とし、
 `run_llm_stage()`を経由する。現行RERUNの`origin=unrecorded`経路は新経路に使わない。
 
+既存`buyback_analysis/main.py`では、provenance有効時に新経路を従来形式の保存と並行実行する。
+`buyback_events_v1`の版がないURLだけを通常実行で処理し、イベント側が失敗しても従来形式は
+継続する。イベント版が作られなかったURLは次回実行で再試行する。`RERUN_URLS`では両経路を
+再実行する。下流の読取切替が完了するまで従来テーブルを削除しない。
+
 `result_type`は版付きの専用値（例: `buyback_events_v1`）とし、1 URLのイベント集合を
 `result_versions.payload`へ保存する。イベントテーブルに独自の抽出版有効期間を重複保持しない。
 

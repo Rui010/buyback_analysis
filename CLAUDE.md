@@ -128,8 +128,9 @@ buyback_analysis/
 自己株買い案件紐づけPhase 1の設計は`docs/buyback_plan_event_linking_design.md`、確定済み紐づけの
 自動訂正（Phase 2）は`docs/buyback_plan_link_correction_design.md`、下流提供契約は
 `docs/handoffs/buyback-plan-event-linking-contract.md`を参照。Phase 1の内部モデル・判定・集計は
-実装済み。複数イベントLLM抽出、原文引用の機械確認、provenance付きevents stageも単体実装済みだが、
-既存パイプラインへの配線は未実装。本番migration用スクリプトは実装済みだが未適用。
+実装済み。`TDNET_PROVENANCE_ENABLED=true`のとき、既存パイプラインは原典照合済み本文から
+複数イベント抽出・引用確認・採用・自動紐づけを実行し、従来形式の保存も並行して維持する。
+本番migration用スクリプトは実装済みだが未適用。
 
 ### midterm_plan_analysis（中期経営計画分析）
 

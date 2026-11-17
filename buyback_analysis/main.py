@@ -22,7 +22,15 @@ from buyback_analysis.usecase.post_url import update_parse_status
 from buyback_analysis.usecase.buyback_result_writer import BuybackResultWriter
 from buyback_analysis.usecase.get_tdnet_buyback_data import get_tdnet_buyback_data_by_urls
 from buyback_analysis.interface.notifier import notify_success, notify_error
-from tdnet_provenance.usecase.adopt_result import history_enabled_from_env, require_provenance_for_rerun
+from buyback_analysis.usecase.process_buyback_event_document import (
+    process_buyback_event_document,
+)
+from buyback_analysis.usecase.save_buyback_event_result import (
+    has_buyback_event_result,
+)
+from tdnet_provenance.usecase.adopt_result import require_provenance_for_rerun
+from tdnet_provenance.usecase.prepare_pdf_input import prepare_pdf_input
+from tdnet_provenance.usecase.provenance_recorder import ProvenanceRecorder
 
 load_dotenv()
 
@@ -69,10 +77,12 @@ def main():
     failed_pdf = 0
     failed_parse = 0
     failed_integrity = 0
+    failed_event = 0
 
     try:
         init_db()  # DBの初期化
-        require_provenance_for_rerun(history_enabled_from_env(session), RERUN_URLS)
+        recorder = ProvenanceRecorder.from_env(session)
+        require_provenance_for_rerun(recorder, RERUN_URLS)
         writer = BuybackResultWriter(session, rerun=bool(RERUN_URLS))
         postgresql_engine = get_database_engine()
 
@@ -104,10 +114,18 @@ def main():
 
         for _, row in df.iterrows():
             total_processed += 1
+            code = str(row["code"])
+            url = row["link"]
+            event_result_exists = (
+                recorder is not None and has_buyback_event_result(session, url)
+            )
+            needs_event_processing = recorder is not None and (
+                bool(RERUN_URLS) or not event_result_exists
+            )
 
             # saved/skipped は PDF取得前にスキップ（不要なダウンロードを回避）
             # RERUN時はDBの判定結果を使わず、種別判定からやり直す
-            detect_type_str = None if RERUN_URLS else get_detect_type_in_db(session, row["link"])
+            detect_type_str = None if RERUN_URLS else get_detect_type_in_db(session, url)
             if detect_type_str is not None:
                 try:
                     detect_type_enum = DetectType(detect_type_str)
@@ -115,9 +133,9 @@ def main():
                     logger.error(f"DBに登録されているタイプ値が不正です: {row['link']}")
                     failed_parse += 1
                     continue
-                if data_exists_in_ir_tables(session, row["link"]):
+                if data_exists_in_ir_tables(session, url) and not needs_event_processing:
                     logger.info(f"データが既に存在します: {row['code']} - {row['date']}")
-                    update_parse_status(session, row["link"], "saved")
+                    update_parse_status(session, url, "saved")
                     skipped_duplicates += 1
                     continue
                 if detect_type_enum not in [
@@ -126,20 +144,60 @@ def main():
                     DetectType.BUYBACK_COMPLETION,
                     DetectType.CORRECTION,
                     DetectType.RETIREMENT,
-                ]:
+                ] and not needs_event_processing:
                     logger.info(f"対象外スキップ: {row['title']}")
                     update_parse_status(session, row["link"], "skipped")
                     skipped_out_of_scope += 1
                     continue
 
-            content = get_pdf_data(
-                url=row["link"],
-                pud_date_str=row["date"].strftime("%Y%m%d"),
-                save_dir=PDF_DOWNLOAD_PATH,
-            )
+            pdf_input = None
+            if needs_event_processing:
+                recorder.start_document(url)
+                pdf_input = prepare_pdf_input(
+                    recorder,
+                    url=url,
+                    disclosure_date=row["date"],
+                    time=row["time"],
+                    pud_date_str=row["date"].strftime("%Y%m%d"),
+                    pdf_root=PDF_DOWNLOAD_PATH,
+                    use_native=False,
+                    stage="events",
+                )
+                content = None if pdf_input is None else pdf_input.content
+            else:
+                content = get_pdf_data(
+                    url=url,
+                    pud_date_str=row["date"].strftime("%Y%m%d"),
+                    save_dir=PDF_DOWNLOAD_PATH,
+                )
             if content is None:
-                logger.error(f"PDFの取得に失敗しました: {row['link']}")
+                logger.error(f"PDFの取得に失敗しました: {url}")
                 failed_pdf += 1
+                continue
+
+            if needs_event_processing:
+                disclosure_datetime = f"{row['date'].strftime('%Y-%m-%d')}T{row['time']}"
+                event_saved = process_buyback_event_document(
+                    session,
+                    recorder,
+                    pdf_input.source,
+                    title=row["title"],
+                    content=content,
+                    code=code,
+                    name=row["name"],
+                    url=url,
+                    disclosure_datetime=disclosure_datetime,
+                )
+                if event_saved:
+                    logger.info(f"[BuybackEvents] 保存・紐づけ完了: {code} - {url}")
+                else:
+                    logger.error(f"[BuybackEvents] 保存・紐づけ失敗: {code} - {url}")
+                    failed_event += 1
+
+            if not RERUN_URLS and data_exists_in_ir_tables(session, url):
+                logger.info(f"従来形式は処理済みのためスキップ: {code} - {row['date']}")
+                update_parse_status(session, url, "saved")
+                skipped_duplicates += 1
                 continue
 
             if detect_type_str is None:
@@ -264,6 +322,7 @@ def main():
         logger.info(f"  PDF取得失敗:     {failed_pdf}件")
         logger.info(f"  パース/判定失敗: {failed_parse}件")
         logger.info(f"  制約違反:        {failed_integrity}件")
+        logger.info(f"  イベント処理失敗:{failed_event}件")
         logger.info("=" * 60)
 
         summary = (
@@ -271,8 +330,9 @@ def main():
             f"重複スキップ:{skipped_duplicates}件 / 対象外:{skipped_out_of_scope}件 / "
             f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
             f"制約違反:{failed_integrity}件"
+            f" / イベント失敗:{failed_event}件"
         )
-        if failed_parse > 0 or failed_pdf > 0 or failed_integrity > 0:
+        if failed_parse > 0 or failed_pdf > 0 or failed_integrity > 0 or failed_event > 0:
             notify_error("buyback_analysis", summary)
         else:
             notify_success("buyback_analysis", summary)
