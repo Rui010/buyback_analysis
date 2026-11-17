@@ -18,3 +18,4 @@ def test_prompt_defines_new_plan_evidence_flags_and_zero_values():
     assert "company_own_transaction=true" in text
     assert "independent_resolution=true" in text
     assert "明示された0はnullにせず0" in text
+    assert "累計・合計の取得株数をshares_acquired" in text
