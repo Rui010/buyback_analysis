@@ -78,6 +78,7 @@ def test_event_model_keeps_extracted_payload_and_active_state():
         "referenced_document_date",
         "referenced_document_title",
         "source_quote",
+        "source_quote_verified",
         "source_page",
         "source_section",
         "payload",

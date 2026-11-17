@@ -70,11 +70,13 @@ def _input_fingerprint(
     event_fingerprint: str,
     candidates: Sequence[PlanLinkCandidate],
     extra_candidate_refs: Sequence[str] = (),
+    source_quote_verified: bool = True,
 ) -> str:
     value = {
         "event_fingerprint": event_fingerprint,
         "candidates": [asdict(candidate) for candidate in candidates],
         "extra_candidate_refs": sorted(extra_candidate_refs),
+        "source_quote_verified": source_quote_verified,
     }
     canonical = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -242,6 +244,7 @@ def relink_buyback_events(
                 parsed_new_plans[candidate_row.event_uid]
             ).status
             == "LINKED"
+            and candidate_row.source_quote_verified
         ]
         canonical_uid = (
             min(qualified_rows, key=_new_plan_sort_key).event_uid
@@ -269,14 +272,31 @@ def relink_buyback_events(
             *ambiguous_peer_refs,
         ]
         input_fingerprint = _input_fingerprint(
-            row.event_fingerprint, snapshot_candidates, conflict_refs
+            row.event_fingerprint,
+            snapshot_candidates,
+            conflict_refs,
+            row.source_quote_verified,
         )
+        if not row.source_quote_verified:
+            decision = persist_existing_plan_decision(
+                session,
+                event_uid=row.event_uid,
+                evaluation=ExistingPlanEvaluation(
+                    "UNRESOLVED", None, (), ("SOURCE_QUOTE_NOT_FOUND",)
+                ),
+                rule_version=rule_version,
+                input_fingerprint=input_fingerprint,
+                uid_factory=uid_factory,
+            )
+            statuses.append(decision.status)
+            continue
         if (
             len(existing_duplicate_ids) == 1
             and not peer_refs
             and not ambiguous_existing_ids
             and not ambiguous_peer_refs
             and evaluate_new_plan(event).status == "LINKED"
+            and row.source_quote_verified
         ):
             duplicate_plan_id = existing_duplicate_ids[0]
             decision = persist_existing_plan_decision(
@@ -305,14 +325,22 @@ def relink_buyback_events(
 
     for row in remaining:
         event = _event_from_row(row)
-        evaluation = _evaluate_existing(event, snapshot_candidates)
+        evaluation = (
+            _evaluate_existing(event, snapshot_candidates)
+            if row.source_quote_verified
+            else ExistingPlanEvaluation(
+                "UNRESOLVED", None, (), ("SOURCE_QUOTE_NOT_FOUND",)
+            )
+        )
         decision = persist_existing_plan_decision(
             session,
             event_uid=row.event_uid,
             evaluation=evaluation,
             rule_version=rule_version,
             input_fingerprint=_input_fingerprint(
-                row.event_fingerprint, snapshot_candidates
+                row.event_fingerprint,
+                snapshot_candidates,
+                source_quote_verified=row.source_quote_verified,
             ),
             uid_factory=uid_factory,
         )

@@ -34,6 +34,7 @@ def _event(code, uid, event_type, payload, *, resolution_date=None, title=None):
         event_fingerprint=f"fingerprint-{uid}",
         resolution_date=resolution_date,
         source_quote="fixture evidence",
+        source_quote_verified=True,
         payload=payload,
         is_active=True,
     )

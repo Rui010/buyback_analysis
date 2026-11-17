@@ -212,3 +212,68 @@ class BuybackEventExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     events: list[ExtractedBuybackEvent] = Field(default_factory=list)
+
+
+class LlmEventPayload(BaseModel):
+    """SDK-compatible superset; strict event-specific validation happens afterward."""
+
+    company_own_transaction: Optional[bool] = None
+    independent_resolution: Optional[bool] = None
+    buyback_shares: Optional[int] = None
+    buyback_amount_yen: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    buyback_method: Optional[str] = None
+    purpose: Optional[str] = None
+    share_type: Optional[str] = None
+    previous_buyback_shares: Optional[int] = None
+    changed_buyback_shares: Optional[int] = None
+    previous_buyback_amount_yen: Optional[int] = None
+    changed_buyback_amount_yen: Optional[int] = None
+    previous_start_date: Optional[str] = None
+    changed_start_date: Optional[str] = None
+    previous_end_date: Optional[str] = None
+    changed_end_date: Optional[str] = None
+    previous_buyback_method: Optional[str] = None
+    changed_buyback_method: Optional[str] = None
+    subtype: Optional[ExecutionNoticeSubtype] = None
+    execution_date: Optional[str] = None
+    planned_buyback_shares: Optional[int] = None
+    planned_buyback_amount_yen: Optional[int] = None
+    executed_shares: Optional[int] = None
+    executed_amount_yen: Optional[int] = None
+    price_per_share_yen: Optional[float] = None
+    cumulative_shares_acquired: Optional[int] = None
+    cumulative_amount_spent_yen: Optional[int] = None
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
+    shares_acquired: Optional[float] = None
+    amount_spent_yen: Optional[int] = None
+    description: Optional[str] = None
+    uses_existing_buyback_plan: Optional[bool] = None
+    related_to_buyback_plan: Optional[bool] = None
+    retirement_shares: Optional[int] = None
+    retirement_date: Optional[str] = None
+    other_party_code: Optional[str] = None
+    other_party_name: Optional[str] = None
+    transaction_role: Optional[str] = None
+
+
+class LlmBuybackEvent(BaseModel):
+    """Flat event shape accepted by google-genai 1.14.0."""
+
+    event_type: EventType
+    event_date: Optional[str] = None
+    resolution_date: Optional[str] = None
+    referenced_document_date: Optional[str] = None
+    referenced_document_title: Optional[str] = None
+    source_quote: str
+    source_page: Optional[int] = Field(default=None, ge=1)
+    source_section: Optional[str] = None
+    payload: LlmEventPayload = Field(default_factory=LlmEventPayload)
+
+
+class LlmBuybackEventExtraction(BaseModel):
+    """Transport schema sent to Gemini; convert to BuybackEventExtraction on receipt."""
+
+    events: list[LlmBuybackEvent] = Field(default_factory=list)

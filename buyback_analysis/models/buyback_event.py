@@ -19,6 +19,7 @@ class BuybackEvent(Base):
     referenced_document_date = Column(String)
     referenced_document_title = Column(String)
     source_quote = Column(String, nullable=False)
+    source_quote_verified = Column(Boolean, nullable=False, default=False)
     source_page = Column(Integer)
     source_section = Column(String)
     payload = Column(JSON, nullable=False)

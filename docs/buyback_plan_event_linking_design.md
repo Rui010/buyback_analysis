@@ -128,7 +128,11 @@ execution noticeのsubtypeを表現する。
 | `event_type` | 種別 |
 | `event_fingerprint` | 正規化内容hash |
 | 文書題名・日付・引用・payload | 原文メタデータ及び抽出値 |
+| `source_quote_verified` | NFKC・空白除去後10文字以上の原文内引用一致。falseは保存するが確定根拠にしない |
 | `is_active` | 現在の採用版に存在するときtrue |
+
+再抽出で`source_quote_verified`がtrueからfalseへ変わった場合は内容変更と同様に安全失効し、
+通常判定をやり直す。引用だけを理由に既存の`LINKED`を維持しない。
 
 ### `buyback_event_link_decisions`
 

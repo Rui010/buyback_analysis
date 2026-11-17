@@ -99,6 +99,7 @@ buyback_analysis/
 │   ├── progress.md      # 進捗データ抽出用
 │   ├── completion.md    # 完了データ抽出用
 │   ├── correction.md    # 訂正データ抽出用
+│   ├── buyback_events.md # Phase 1の複数イベント抽出用
 │   └── midterm_plan.md  # 中期経営計画抽出用（midterm_plan_analysisが参照）
 └── usecase/             # ビジネスロジック
     ├── detect_type.py   # LLMによる文書種別判定
@@ -109,8 +110,12 @@ buyback_analysis/
     ├── get_pdf_data.py  # PDFダウンロード・テキスト抽出
     ├── data_exists.py   # 重複チェック
     ├── event_schemas.py                 # Phase 1の複数イベントresponseSchema
+    ├── extract_buyback_events.py        # 複数イベントのLLM抽出
+    ├── validate_event_quotes.py         # 抽出引用と原文の機械照合
+    ├── run_buyback_event_stage.py       # provenance付きevents stage
     ├── event_identity.py                # event_uid引継ぎ・内容fingerprint
     ├── adopt_buyback_events.py          # 採用イベント保存・安全失効・連鎖失効
+    ├── migrate_buyback_plan_event_tables.py # Phase 1テーブルの冪等SQLite migration
     ├── link_new_plan.py                 # new_planの確定条件・案件冪等生成
     ├── link_existing_plan_events.py     # 既存案件向けイベントの候補判定
     ├── link_normalization.py            # 日付・取得方法の正規化
@@ -123,8 +128,8 @@ buyback_analysis/
 自己株買い案件紐づけPhase 1の設計は`docs/buyback_plan_event_linking_design.md`、確定済み紐づけの
 自動訂正（Phase 2）は`docs/buyback_plan_link_correction_design.md`、下流提供契約は
 `docs/handoffs/buyback-plan-event-linking-contract.md`を参照。Phase 1の内部モデル・判定・集計は
-実装済みだが、原文引用の機械確認、複数イベントLLM抽出とプロンプト、既存パイプラインへの配線、
-本番migrationは未実装。
+実装済み。複数イベントLLM抽出、原文引用の機械確認、provenance付きevents stageも単体実装済みだが、
+既存パイプラインへの配線は未実装。本番migration用スクリプトは実装済みだが未適用。
 
 ### midterm_plan_analysis（中期経営計画分析）
 

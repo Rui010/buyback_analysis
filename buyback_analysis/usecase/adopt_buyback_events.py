@@ -106,6 +106,7 @@ def _write_event(
     disclosure_datetime: str | None,
     event: ExtractedBuybackEvent,
     fingerprint: str,
+    source_quote_verified: bool,
 ) -> None:
     stored.version_id = version_id
     stored.url = url
@@ -119,6 +120,7 @@ def _write_event(
     stored.referenced_document_date = event.referenced_document_date
     stored.referenced_document_title = event.referenced_document_title
     stored.source_quote = event.source_quote
+    stored.source_quote_verified = source_quote_verified
     stored.source_page = event.source_page
     stored.source_section = event.source_section
     stored.payload = event.payload.model_dump(mode="json")
@@ -135,9 +137,18 @@ def adopt_buyback_events(
     document_title: str | None = None,
     disclosure_datetime: str | None = None,
     aggregation_rule_version: str = "projection:v1",
+    quote_verified: Sequence[bool] | None = None,
     uid_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
 ) -> BuybackEventAdoptionResult:
     """Replace one URL's current events, leaving commit/rollback to the caller."""
+
+    verified_flags = (
+        tuple(quote_verified)
+        if quote_verified is not None
+        else tuple(False for _ in events)
+    )
+    if len(verified_flags) != len(events):
+        raise ValueError("quote_verified must have one value per event")
 
     old_events = (
         session.query(BuybackEvent)
@@ -162,8 +173,15 @@ def adopt_buyback_events(
 
     changed: list[str] = []
     reactivated: list[str] = []
-    for event, assignment in zip(events, identity.assignments):
+    for event, assignment, quote_is_verified in zip(
+        events, identity.assignments, verified_flags
+    ):
         stored = old_by_uid.get(assignment.event_uid)
+        quote_became_unverified = bool(
+            stored is not None
+            and stored.source_quote_verified
+            and not quote_is_verified
+        )
         if stored is None:
             stored = BuybackEvent(event_uid=assignment.event_uid)
             session.add(stored)
@@ -176,13 +194,18 @@ def adopt_buyback_events(
             disclosure_datetime=disclosure_datetime,
             event=event,
             fingerprint=assignment.event_fingerprint,
+            source_quote_verified=quote_is_verified,
         )
-        if assignment.content_changed:
+        if assignment.content_changed or quote_became_unverified:
             changed.append(assignment.event_uid)
             _add_expiration(
                 session,
                 event_uid=assignment.event_uid,
-                reason_code="EXPIRED_BY_CONTENT_CHANGE",
+                reason_code=(
+                    "EXPIRED_BY_CONTENT_CHANGE"
+                    if assignment.content_changed
+                    else "EXPIRED_BY_SOURCE_QUOTE_INVALIDATION"
+                ),
                 uid_factory=uid_factory,
             )
             _invalidate_origin_plan(

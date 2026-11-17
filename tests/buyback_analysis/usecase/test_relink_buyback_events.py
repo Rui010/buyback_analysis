@@ -32,6 +32,7 @@ def _event(uid, event_type, payload, **overrides):
         "event_type": event_type,
         "event_fingerprint": f"fingerprint-{uid}",
         "source_quote": "判定根拠となる原文",
+        "source_quote_verified": True,
         "payload": payload,
         "is_active": True,
     }
@@ -576,3 +577,30 @@ def test_complete_duplicate_is_canonical_when_earlier_event_lacks_evidence():
 
     assert second.unresolved == 1
     assert session.query(BuybackPlan).count() == 1
+
+
+def test_unverified_quote_is_saved_as_unresolved_and_never_creates_plan():
+    session = _session()
+    session.add(
+        _event(
+            "unverified-origin",
+            "new_plan",
+            {
+                "company_own_transaction": True,
+                "independent_resolution": True,
+                "buyback_shares": 1000,
+            },
+            resolution_date="2026-01-01",
+            source_quote_verified=False,
+        )
+    )
+    session.commit()
+
+    result = relink_buyback_events(
+        session, code="1234", rule_version="link:v1", uid_factory=_ids()
+    )
+
+    assert result.unresolved == 1
+    assert session.query(BuybackPlan).count() == 0
+    decision = session.query(BuybackEventLinkDecision).one()
+    assert decision.reason_codes == ["SOURCE_QUOTE_NOT_FOUND"]

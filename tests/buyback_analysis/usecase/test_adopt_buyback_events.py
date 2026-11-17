@@ -61,6 +61,7 @@ def _adopt(session, events, version="version-1", uid_factory=None):
         url=URL,
         code="1234",
         document_title="自己株式取得に係る事項の決定",
+        quote_verified=[True for _ in events],
         events=events,
         uid_factory=uid_factory or _uid_factory("id"),
     )
@@ -75,6 +76,7 @@ def test_first_adoption_inserts_active_event_without_committing(session):
     stored = session.get(BuybackEvent, "event-1")
     assert stored.version_id == "version-1"
     assert stored.document_title == "自己株式取得に係る事項の決定"
+    assert stored.source_quote_verified is True
     assert stored.payload["buyback_amount_yen"] == 5_000_000
     assert stored.is_active is True
 
@@ -97,6 +99,45 @@ def test_exact_readoption_keeps_uid_and_updates_version(session):
     assert session.get(BuybackEvent, "event-1").version_id == "version-2"
     assert session.query(BuybackEvent).count() == 1
     assert session.query(BuybackEventLinkDecision).count() == 0
+
+
+def test_quote_verification_downgrade_expires_existing_link(session):
+    _adopt(session, [_new_plan()], uid_factory=lambda: "event-1")
+    session.add(
+        BuybackEventLinkDecision(
+            decision_id="decision-old",
+            event_uid="event-1",
+            status="LINKED",
+            decision_kind="NORMAL",
+            linked_plan_id="plan-1",
+            candidates=[],
+            reason_codes=["NEW_PLAN_EVIDENCE_COMPLETE"],
+            rule_version="link:v1",
+            input_fingerprint="input-old",
+            is_current=True,
+        )
+    )
+    session.commit()
+
+    result = adopt_buyback_events(
+        session,
+        version_id="version-2",
+        url=URL,
+        code="1234",
+        events=[_new_plan()],
+        quote_verified=[False],
+        uid_factory=_uid_factory("generated"),
+    )
+
+    assert result.content_changed_uids == ("event-1",)
+    current = (
+        session.query(BuybackEventLinkDecision)
+        .filter(BuybackEventLinkDecision.is_current.is_(True))
+        .one()
+    )
+    assert current.decision_kind == "EXPIRATION"
+    assert current.reason_codes == ["EXPIRED_BY_SOURCE_QUOTE_INVALIDATION"]
+    assert session.get(BuybackEvent, "event-1").source_quote_verified is False
 
 
 def test_corrected_single_event_keeps_uid_and_adds_content_expiration(session):

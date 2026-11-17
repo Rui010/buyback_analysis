@@ -84,3 +84,25 @@ SQLiteは既存テーブルの主キーをALTERできないため、以下で移
 ```powershell
 .\.venv\Scripts\python.exe scripts\migrate_tdnet_provenance_tables.py --restore <バックアップファイル>
 ```
+
+## 2026-11-16: 自己株買い案件・イベント紐づけ Phase 1
+
+`buyback_events`、`buyback_plans`、`buyback_event_link_decisions`、
+`buyback_plan_projections`の4テーブルを追加する。リリース前の開発DBに限り、
+`buyback_events.source_quote_verified`が不足していれば、既存行を未確認（false）として追加する。
+
+本番適用はパイプラインを停止し、`buyback_app`側の同期allowlistが4テーブルを意図どおり扱うことを
+確認してから実施する。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\migrate_buyback_plan_event_tables.py
+```
+
+実行時にSQLiteオンラインバックアップを同じディレクトリへ作成し、schema、索引、参照切れ、
+既存テーブルの全行hash、対象テーブルの行数を事後検証する。再実行は冪等である。
+
+復元は全パイプライン停止中に行う。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\migrate_buyback_plan_event_tables.py --restore <バックアップファイル>
+```
