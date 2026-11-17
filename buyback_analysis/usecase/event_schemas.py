@@ -277,3 +277,35 @@ class LlmBuybackEventExtraction(BaseModel):
     """Transport schema sent to Gemini; convert to BuybackEventExtraction on receipt."""
 
     events: list[LlmBuybackEvent] = Field(default_factory=list)
+
+
+STRICT_PAYLOAD_MODELS: dict[EventType, type[PayloadBase]] = {
+    EventType.NEW_PLAN: NewPlanPayload,
+    EventType.AMENDMENT: AmendmentPayload,
+    EventType.EXECUTION_NOTICE: ExecutionNoticePayload,
+    EventType.PROGRESS: ProgressPayload,
+    EventType.COMPLETION: CompletionPayload,
+    EventType.SUPPLEMENT: SupplementPayload,
+    EventType.EQUITY_COMPENSATION: EquityCompensationPayload,
+    EventType.RETIREMENT: RetirementPayload,
+    EventType.OTHER_PARTY_TRANSACTION: OtherPartyTransactionPayload,
+    EventType.OTHER: OtherPayload,
+}
+
+
+def strict_extraction_from_transport(
+    transport: LlmBuybackEventExtraction,
+) -> BuybackEventExtraction:
+    """Drop only event-inapplicable fields from the SDK-compatible payload superset."""
+
+    strict_events = []
+    for event in transport.events:
+        event_data = event.model_dump(mode="json", exclude_none=True)
+        allowed = STRICT_PAYLOAD_MODELS[event.event_type].model_fields
+        event_data["payload"] = {
+            key: value
+            for key, value in event_data.get("payload", {}).items()
+            if key in allowed
+        }
+        strict_events.append(event_data)
+    return BuybackEventExtraction.model_validate({"events": strict_events})

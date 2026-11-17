@@ -20,6 +20,7 @@ from buyback_analysis.interface.logger import Logger
 from buyback_analysis.usecase.event_schemas import (
     BuybackEventExtraction,
     LlmBuybackEventExtraction,
+    strict_extraction_from_transport,
 )
 
 
@@ -31,7 +32,7 @@ GENERATION_CONFIG = {
     "temperature": 0,
     "max_output_tokens": 16384,
 }
-EXTRACTOR_VERSION = "buyback_events_text:2"
+EXTRACTOR_VERSION = "buyback_events_text:3"
 
 
 def extract_buyback_events(
@@ -64,9 +65,7 @@ def extract_buyback_events(
                 r"^```json\s*|\s*```$", "", response.text.strip(), flags=re.DOTALL
             )
             transport = LlmBuybackEventExtraction.model_validate(json.loads(cleaned))
-            return BuybackEventExtraction.model_validate(
-                transport.model_dump(mode="json", exclude_none=True)
-            )
+            return strict_extraction_from_transport(transport)
         except APIError as exc:
             if exc.code in {502, 503, 504} and attempt < max_retries:
                 logger.info(

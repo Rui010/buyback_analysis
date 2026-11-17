@@ -41,8 +41,52 @@ def test_extracts_multiple_typed_events(mock_genai, mock_report, monkeypatch):
     mock_report.assert_called_once_with(response)
 
 
+@patch.object(module, "report_llm_response")
+@patch.object(module, "genai")
+def test_transport_superset_fields_are_removed_for_each_strict_payload(
+    mock_genai, mock_report, monkeypatch
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    client = MagicMock()
+    mock_genai.Client.return_value = client
+    client.models.generate_content.return_value = _response(
+        {
+            "events": [
+                {
+                    "event_type": "progress",
+                    "source_quote": "取得状況を報告します。",
+                    "payload": {
+                        "cumulative_shares_acquired": 10,
+                        "executed_shares": 0,
+                        "executed_amount_yen": 0,
+                    },
+                },
+                {
+                    "event_type": "completion",
+                    "source_quote": "取得を終了しました。",
+                    "payload": {"shares_acquired": 0, "description": "取得枠の終了"},
+                },
+                {
+                    "event_type": "execution_notice",
+                    "source_quote": "買付けを実施します。",
+                    "payload": {
+                        "subtype": "planned",
+                        "related_to_buyback_plan": True,
+                    },
+                },
+            ]
+        }
+    )
+
+    result = module.extract_buyback_events("title", "content", "1234", "Example")
+
+    assert result.events[0].payload.cumulative_shares_acquired == 10
+    assert result.events[1].payload.shares_acquired == 0
+    assert result.events[2].payload.subtype.value == "planned"
+
+
 def test_generation_contract_has_stable_version_and_zero_temperature():
-    assert module.EXTRACTOR_VERSION == "buyback_events_text:2"
+    assert module.EXTRACTOR_VERSION == "buyback_events_text:3"
     assert module.GENERATION_CONFIG["temperature"] == 0
     assert module.PROMPT_FILENAME == "buyback_events.md"
 
