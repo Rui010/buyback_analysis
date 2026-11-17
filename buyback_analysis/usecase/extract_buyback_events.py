@@ -32,7 +32,7 @@ GENERATION_CONFIG = {
     "temperature": 0,
     "max_output_tokens": 16384,
 }
-EXTRACTOR_VERSION = "buyback_events_text:5"
+EXTRACTOR_VERSION = "buyback_events_text:6"
 
 
 def extract_buyback_events(
