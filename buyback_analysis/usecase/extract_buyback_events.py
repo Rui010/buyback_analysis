@@ -6,6 +6,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ from buyback_analysis.interface.llm_usage import report_llm_response
 from buyback_analysis.interface.logger import Logger
 from buyback_analysis.usecase.event_schemas import (
     BuybackEventExtraction,
+    EventType,
     LlmBuybackEventExtraction,
     strict_extraction_from_transport,
 )
@@ -32,7 +34,25 @@ GENERATION_CONFIG = {
     "temperature": 0,
     "max_output_tokens": 16384,
 }
-EXTRACTOR_VERSION = "buyback_events_text:6"
+EXTRACTOR_VERSION = "buyback_events_text:7"
+
+
+def _apply_document_role(title: str, extraction: BuybackEventExtraction) -> BuybackEventExtraction:
+    """Remove a repeated frame only for a title-specific execution notice."""
+
+    normalized_title = unicodedata.normalize("NFKC", title).lower()
+    has_execution = any(
+        event.event_type == EventType.EXECUTION_NOTICE for event in extraction.events
+    )
+    if "tostnet" in normalized_title and has_execution:
+        return BuybackEventExtraction(
+            events=[
+                event
+                for event in extraction.events
+                if event.event_type != EventType.NEW_PLAN
+            ]
+        )
+    return extraction
 
 
 def extract_buyback_events(
@@ -65,7 +85,9 @@ def extract_buyback_events(
                 r"^```json\s*|\s*```$", "", response.text.strip(), flags=re.DOTALL
             )
             transport = LlmBuybackEventExtraction.model_validate(json.loads(cleaned))
-            return strict_extraction_from_transport(transport)
+            return _apply_document_role(
+                title, strict_extraction_from_transport(transport)
+            )
         except APIError as exc:
             if exc.code in {502, 503, 504} and attempt < max_retries:
                 logger.info(

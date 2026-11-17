@@ -85,8 +85,45 @@ def test_transport_superset_fields_are_removed_for_each_strict_payload(
     assert result.events[2].payload.subtype.value == "planned"
 
 
+@patch.object(module, "report_llm_response")
+@patch.object(module, "genai")
+def test_tostnet_notice_drops_repeated_new_plan_when_execution_event_exists(
+    mock_genai, mock_report, monkeypatch
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    client = MagicMock()
+    mock_genai.Client.return_value = client
+    client.models.generate_content.return_value = _response(
+        {
+            "events": [
+                {
+                    "event_type": "execution_notice",
+                    "resolution_date": "2026-10-13",
+                    "source_quote": "ToSTNeT-3による買付けを実施します。",
+                    "payload": {"subtype": "planned"},
+                },
+                {
+                    "event_type": "new_plan",
+                    "resolution_date": "2026-10-13",
+                    "source_quote": "取締役会決議の取得枠を再掲します。",
+                    "payload": {"buyback_shares": 200000000},
+                },
+            ]
+        }
+    )
+
+    result = module.extract_buyback_events(
+        "自己株式立会外買付取引（ToSTNeT-3）による買付けに関するお知らせ",
+        "content",
+        "3350",
+        "Example",
+    )
+
+    assert [event.event_type.value for event in result.events] == ["execution_notice"]
+
+
 def test_generation_contract_has_stable_version_and_zero_temperature():
-    assert module.EXTRACTOR_VERSION == "buyback_events_text:6"
+    assert module.EXTRACTOR_VERSION == "buyback_events_text:7"
     assert module.GENERATION_CONFIG["temperature"] == 0
     assert module.PROMPT_FILENAME == "buyback_events.md"
 
