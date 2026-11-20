@@ -36,6 +36,16 @@ def get_detect_type_in_db(session, link) -> str:
         return None
 
 
+def get_parse_status_in_db(session, link) -> str | None:
+    """is_checkedのparse_statusを返す。レコードがない・取得に失敗した場合はNone。"""
+    try:
+        result = session.query(IsChecked).filter_by(url=link).first()
+        return None if result is None else result.parse_status
+    except Exception as e:
+        logger.error(f"データベースからの取得に失敗しました: {e}")
+        return None
+
+
 def detect_type_by_llm(title: str, content: str) -> str:
     """
     Gemini APIを使って自己株式取得の種類を判定する。

@@ -16,6 +16,7 @@ from buyback_analysis.usecase.parse_pdf_by_llm import parse_pdf_by_llm
 from buyback_analysis.usecase.detect_type import (
     detect_type_by_llm,
     get_detect_type_in_db,
+    get_parse_status_in_db,
 )
 from buyback_analysis.consts.detect_type import DetectType
 from buyback_analysis.usecase.post_url import update_parse_status
@@ -133,6 +134,19 @@ def main():
                 and not (SINGLE_LLM_ENABLED and requires_legacy_llm(row["title"]))
                 and (bool(RERUN_URLS) or not event_result_exists)
             )
+
+            # 1回抽出モードでイベント結果が採用済み、かつ互換保存で従来テーブルに書く行が
+            # なかった（skipped）文書は処理済み。従来LLMへ回すと必須項目不足で毎回失敗する
+            if (
+                SINGLE_LLM_ENABLED
+                and event_result_exists
+                and not RERUN_URLS
+                and not requires_legacy_llm(row["title"])
+                and get_parse_status_in_db(session, url) == "skipped"
+            ):
+                logger.info(f"イベントのみ保存済みのためスキップ: {code} - {url}")
+                skipped_duplicates += 1
+                continue
 
             # saved/skipped は PDF取得前にスキップ（不要なダウンロードを回避）
             # RERUN時はDBの判定結果を使わず、種別判定からやり直す

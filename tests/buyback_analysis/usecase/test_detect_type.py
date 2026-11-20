@@ -24,3 +24,28 @@ class TestDetectTypeByLlm:
 
     def test_empty_string_falls_back_to_other(self):
         assert self._call("") == "other"
+
+
+class TestGetParseStatusInDb:
+    def _session(self, record):
+        session = MagicMock()
+        session.query.return_value.filter_by.return_value.first.return_value = record
+        return session
+
+    def test_returns_status_of_existing_record(self):
+        from buyback_analysis.usecase.detect_type import get_parse_status_in_db
+
+        record = MagicMock(parse_status="skipped")
+        assert get_parse_status_in_db(self._session(record), "https://example.test/a.pdf") == "skipped"
+
+    def test_returns_none_when_record_missing(self):
+        from buyback_analysis.usecase.detect_type import get_parse_status_in_db
+
+        assert get_parse_status_in_db(self._session(None), "https://example.test/a.pdf") is None
+
+    def test_returns_none_on_db_error(self):
+        from buyback_analysis.usecase.detect_type import get_parse_status_in_db
+
+        session = MagicMock()
+        session.query.side_effect = RuntimeError("database is locked")
+        assert get_parse_status_in_db(session, "https://example.test/a.pdf") is None
