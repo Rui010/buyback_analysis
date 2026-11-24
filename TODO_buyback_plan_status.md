@@ -55,7 +55,8 @@
 
 ### buyback_app向け（作業指示書を `docs/handoffs/` に書く）
 - [x] PostgreSQLのテーブル定義（DDL）: `C:/apps/stock-market-db` の revision `4efefc53e4b4`（2026-11-24 master反映・本番PG適用済み、列・PK・インデックス確認済み）。数値はdouble precision、calculated_atはtimestamp（UTC）。allowlist追加より先に適用する
-- [ ] 同期allowlistに `announcement_plan_status` を追加
+- [x] 同期allowlistに `announcement_plan_status` を追加（2026-11-24 buyback_app dev 5316f7f でpush済み、main未反映）
+- [ ] フロント統合方針を決める: 一覧は既にbuyback_app独自推定でcompletion/latest_progressを表示している。案は(1)JSONにplan_statusesを足すだけ (2)+状態バッジ表示 (3)案件がある行は既存値を置換。同期でPGに入るのを確認してから決める（2026-11-24）
 - [ ] フロント: `announcements.url = announcement_url` で結合し、案件がある行だけ進捗・完了を表示。同URL複数行は全表示
 
 ### 並行
