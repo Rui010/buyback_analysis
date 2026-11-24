@@ -34,7 +34,7 @@ GENERATION_CONFIG = {
     "temperature": 0,
     "max_output_tokens": 16384,
 }
-EXTRACTOR_VERSION = "buyback_events_text:7"
+EXTRACTOR_VERSION = "buyback_events_text:8"
 
 
 def _apply_document_role(title: str, extraction: BuybackEventExtraction) -> BuybackEventExtraction:

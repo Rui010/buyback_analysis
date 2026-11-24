@@ -123,7 +123,7 @@ def test_tostnet_notice_drops_repeated_new_plan_when_execution_event_exists(
 
 
 def test_generation_contract_has_stable_version_and_zero_temperature():
-    assert module.EXTRACTOR_VERSION == "buyback_events_text:7"
+    assert module.EXTRACTOR_VERSION == "buyback_events_text:8"
     assert module.GENERATION_CONFIG["temperature"] == 0
     assert module.PROMPT_FILENAME == "buyback_events.md"
 
