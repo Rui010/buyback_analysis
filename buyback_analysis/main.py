@@ -26,6 +26,9 @@ from buyback_analysis.interface.notifier import notify_success, notify_error
 from buyback_analysis.usecase.process_buyback_event_document import (
     process_buyback_event_document,
 )
+from buyback_analysis.usecase.rebuild_announcement_plan_status import (
+    rebuild_announcement_plan_status,
+)
 from buyback_analysis.usecase.save_buyback_event_result import (
     has_buyback_event_result,
 )
@@ -360,6 +363,16 @@ def main():
             logger.info(f"データを保存しました: {row['code']} - {row['date']}")
             successful_saves += 1
 
+        # フロント提供用の案件状態表をprojectionから作り直す（全文書の処理後に1回）
+        plan_status_rows = None
+        try:
+            plan_status_rows = rebuild_announcement_plan_status(session)
+            session.commit()
+            logger.info(f"announcement_plan_statusを作り直しました: {plan_status_rows}件")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"announcement_plan_statusの作り直しに失敗しました: {e}")
+
         # 処理サマリーをログ出力
         logger.info("=" * 60)
         logger.info("【処理サマリー】")
@@ -371,6 +384,10 @@ def main():
         logger.info(f"  パース/判定失敗: {failed_parse}件")
         logger.info(f"  制約違反:        {failed_integrity}件")
         logger.info(f"  イベント処理失敗:{failed_event}件")
+        logger.info(
+            "  案件状態表:      "
+            + (f"{plan_status_rows}件" if plan_status_rows is not None else "作成失敗")
+        )
         logger.info("=" * 60)
 
         summary = (
@@ -379,8 +396,19 @@ def main():
             f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
             f"制約違反:{failed_integrity}件"
             f" / イベント失敗:{failed_event}件"
+            + (
+                f" / 案件状態表:{plan_status_rows}件"
+                if plan_status_rows is not None
+                else " / 案件状態表:作成失敗"
+            )
         )
-        if failed_parse > 0 or failed_pdf > 0 or failed_integrity > 0 or failed_event > 0:
+        if (
+            failed_parse > 0
+            or failed_pdf > 0
+            or failed_integrity > 0
+            or failed_event > 0
+            or plan_status_rows is None
+        ):
             notify_error("buyback_analysis", summary)
         else:
             notify_success("buyback_analysis", summary)

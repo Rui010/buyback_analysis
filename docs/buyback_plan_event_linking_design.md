@@ -175,6 +175,34 @@ SQLiteでは通常判定の冪等性を部分一意インデックス
 最新の`progress`累計値、最新の`completion`最終値を保持する。案件が`ACTIVE`で起点が現行
 `LINKED`の場合だけ`is_publishable=true`とする。
 
+### `announcement_plan_status`（下流提供用の派生表・2026-11-23決定）
+
+フロントの一覧は従来テーブル（`buyback_announcements`等）基準のまま、案件がある発表行に
+だけ進捗・完了を付け足す。そのため「発表文書URL → 案件の現在状態」を1案件1行にまとめた
+この表だけをPostgreSQL（`buyback_announcement_plan_status`）へ同期し、上記4テーブルは
+同期しない。親子の同期順序、TRUNCATE中の参照不整合、追記型履歴の扱いを決めずに済み、
+紐づけ方を変えても下流への影響がこの表の中で収まるため。
+
+- 主キーは`buyback_plan_id`。1文書から複数案件ができた場合は同じ`announcement_url`が
+  複数行になる。
+- `announcement_url`は起点イベント（`plans.origin_event_uid` → `events.url`）のURL。
+- 入れるのは`is_publishable=true`の案件だけ。未確定イベントは入れない。
+- 現在値・累計・完了実績・`plan_status`・`aggregation_rule_version`・`calculated_at`は
+  projectionの値をそのまま写す（`calculated_at`はprojectionの計算日時）。
+- 進捗率`progress_rate_amount`/`progress_rate_shares`は累計 ÷ 現在の上限（0〜1の比率）。
+  金額・株数で独立に計算し、上限・累計のどちらかが欠けるか上限が0ならNULL。
+- `latest_progress_date`は、現行`LINKED`かつ採用中の`progress`イベントの`event_date`の
+  最大値（日付なしは無視）。`execution_notice`の`result`は含めないため、
+  `plan_status=in_progress`でもNULLの場合がある。
+- 当初値・判定履歴・引用は入れない（必要になったら列を足す）。
+- 他テーブルへの外部キーは持たない。LLM抽出の変更で列や紐づけが変わりうるため、
+  単独で作り直し・同期できる形にする。
+- 作成は`buyback_analysis/usecase/rebuild_announcement_plan_status.py`。自己株買い
+  パイプラインの最後（全文書処理後）に毎回まるごと作り直す。失敗時はrollbackして
+  エラー通知し、パイプラインは止めない。
+- 本番SQLiteへのテーブル作成は`init_db()`（`create_all()`）で行い、migrationスクリプトの
+  対象にはしない（毎回作り直す派生表で、移行すべきデータがないため）。
+
 ## 6. イベントIDと冪等性
 
 LLMの配列順、source locator、extractor versionをIDに含めない。

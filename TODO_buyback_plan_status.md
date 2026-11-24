@@ -44,17 +44,17 @@
 ## TODO
 
 ### buyback_analysis
-- [ ] テストを先に書く（列の導出、進捗率NULL条件、publishableのみ、1文書複数案件、作り直しの冪等性）
-- [ ] モデル `buyback_analysis/models/announcement_plan_status.py` とテスト
-- [ ] 作成usecase（例: `buyback_analysis/usecase/rebuild_announcement_plan_status.py`）
-- [ ] `main.py` のprojection再計算後に呼ぶ
-- [ ] 本番SQLiteへのテーブル作成方法を決める（`init_db()` で作られるか、migrationスクリプトに足すか）
-- [ ] 設計を `docs/buyback_plan_event_linking_design.md` と下流契約 `docs/handoffs/buyback-plan-event-linking-contract.md` に反映
-- [ ] CLAUDE.md のアーキテクチャ・データフローを更新
-- [ ] カバレッジ計測
+- [x] テストを先に書く（列の導出、進捗率NULL条件、publishableのみ、1文書複数案件、作り直しの冪等性）
+- [x] モデル `buyback_analysis/models/announcement_plan_status.py` とテスト
+- [x] 作成usecase `buyback_analysis/usecase/rebuild_announcement_plan_status.py`（2026-11-24。進捗率は0〜1の比率、latest_progress_dateはprogressイベントのみ、FKなし、calculated_atはprojectionの値）
+- [x] `main.py` の全文書処理後（サマリー前）に1回呼ぶ。失敗時はrollbackしてログ・エラー通知（パイプラインは止めない）。サマリーに「案件状態表:N件」を追加
+- [x] 本番SQLiteへのテーブル作成方法: `init_db()`（`sqlite_engine.py` でモデルをimport）。FKなし・毎回作り直しの派生表なのでmigration不要（2026-11-24決定）
+- [x] 設計を `docs/buyback_plan_event_linking_design.md` と下流契約 `docs/handoffs/buyback-plan-event-linking-contract.md` に反映
+- [x] CLAUDE.md のアーキテクチャ・データフローを更新
+- [x] カバレッジ計測（新規2モジュール100%）
 
 ### buyback_app向け（作業指示書を `docs/handoffs/` に書く）
-- [ ] PostgreSQLのテーブル定義（DDL）
+- [x] PostgreSQLのテーブル定義（DDL）: `C:/apps/stock-market-db` の revision `4efefc53e4b4`（2026-11-24 master反映・本番PG適用済み、列・PK・インデックス確認済み）。数値はdouble precision、calculated_atはtimestamp（UTC）。allowlist追加より先に適用する
 - [ ] 同期allowlistに `announcement_plan_status` を追加
 - [ ] フロント: `announcements.url = announcement_url` で結合し、案件がある行だけ進捗・完了を表示。同URL複数行は全表示
 

@@ -12,6 +12,10 @@ from buyback_analysis.models.buyback_plan import BuybackPlan  # noqa: F401
 from buyback_analysis.models.buyback_plan_projection import (  # noqa: F401
     BuybackPlanProjection,
 )
+# フロント提供用の派生表。init_db()のcreate_all()で本番にも作られる（migration不要）
+from buyback_analysis.models.announcement_plan_status import (  # noqa: F401
+    AnnouncementPlanStatus,
+)
 
 
 load_dotenv()
