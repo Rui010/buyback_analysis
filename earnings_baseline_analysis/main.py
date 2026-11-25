@@ -57,6 +57,7 @@ def main():
     skipped_duplicates = 0
     failed_pdf = 0
     failed_parse = 0
+    failed_save = 0
 
     try:
         init_db()
@@ -134,8 +135,8 @@ def main():
                 logger.info(f"保存完了 [{extraction_status}]: {code} - {title}")
                 successful_saves += 1
             else:
-                logger.error(f"保存失敗: {code} - {title}")
-                failed_parse += 1
+                logger.error(f"保存失敗 [{extraction_status}]: {code} - {title}")
+                failed_save += 1
 
         logger.info("=" * 60)
         logger.info("【処理サマリー】")
@@ -144,12 +145,14 @@ def main():
         logger.info(f"  重複スキップ:    {skipped_duplicates}件")
         logger.info(f"  PDF取得失敗:     {failed_pdf}件")
         logger.info(f"  パース/判定失敗: {failed_parse}件")
+        logger.info(f"  保存失敗:        {failed_save}件")
         logger.info("=" * 60)
 
         summary = (
             f"総処理:{total_processed}件 / 保存:{successful_saves}件 / "
             f"重複スキップ:{skipped_duplicates}件 / "
-            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件"
+            f"PDF失敗:{failed_pdf}件 / パース失敗:{failed_parse}件 / "
+            f"保存失敗:{failed_save}件"
         )
         notify_success("earnings_baseline_analysis", summary)
 
